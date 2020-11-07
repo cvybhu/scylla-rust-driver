@@ -48,11 +48,11 @@ struct NodePool {
 pub struct QueryRows(pub Vec<result::Row>);
 
 impl QueryRows {
-    pub fn into_typed<RowT>(self) -> Vec<RowT>
+    pub fn into_typed<RowT>(self) -> impl Iterator<Item = RowT>
     where
         RowT: From<result::Row>,
     {
-        self.0.into_iter().map(RowT::from).collect()
+        self.0.into_iter().map(RowT::from)
     }
 }
 

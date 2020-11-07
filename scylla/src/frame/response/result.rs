@@ -103,77 +103,15 @@ impl CQLValue {
         }
     }
 
+    pub fn into_set(self) -> Option<Vec<CQLValue>> {
+        match self {
+            Self::Set(s) => Some(s),
+            _ => None,
+        }
+    }
+
     // TODO
 }
-
-// This trait must exist because we can't define From<Option<CqlVal>> for String
-// Neither Option nor String are defined in this crate
-pub trait FromCQLVal<T> {
-    fn from(cql_val: T) -> Self;
-}
-
-impl<T: FromCQLVal<CQLValue>> FromCQLVal<Option<CQLValue>> for T {
-    fn from(cql_val_opt: Option<CQLValue>) -> Self {
-        T::from(cql_val_opt.expect("Tried to convert from CQLValue that is NULL!"))
-    }
-}
-
-impl<T: FromCQLVal<CQLValue>> FromCQLVal<Option<CQLValue>> for Option<T> {
-    fn from(cql_val_opt: Option<CQLValue>) -> Self {
-        cql_val_opt.map(T::from)
-    }
-}
-
-macro_rules! impl_from_cql_val {
-    ($T:ty, $convert_func:ident) => {
-        impl FromCQLVal<CQLValue> for $T {
-            fn from(cql_val: CQLValue) -> $T {
-                return cql_val.$convert_func().expect(&format!(
-                    "Converting from CQLValue to {} failed!",
-                    stringify!($T)
-                ));
-            }
-        }
-    };
-}
-
-impl_from_cql_val!(i32, as_int); // i32::from<CQLValue>
-impl_from_cql_val!(i64, as_bigint); // i64::from<CQLValue>
-impl_from_cql_val!(String, into_string); // String::from<CQLValue>
-
-macro_rules! impl_tuple_from_row {
-    ( $($Ti:tt),+ ) => {
-        impl<$($Ti),+> From<Row> for ($($Ti,)+)
-        where
-            $($Ti: FromCQLVal<Option<CQLValue>>),+
-        {
-            fn from(row: Row) -> Self {
-                let mut vals_iter = row.columns.into_iter();
-                const TUPLE_AS_STR: &'static str = stringify!(($($Ti,)+));
-
-                (
-                    $($Ti::from(vals_iter.next().expect(&format!("Row is too short to convert to {}!", TUPLE_AS_STR))),)+
-                )
-            }
-        }
-    }
-}
-
-impl_tuple_from_row!(T1);
-impl_tuple_from_row!(T1, T2);
-impl_tuple_from_row!(T1, T2, T3);
-impl_tuple_from_row!(T1, T2, T4, T5);
-impl_tuple_from_row!(T1, T2, T4, T5, T6);
-impl_tuple_from_row!(T1, T2, T4, T5, T6, T7);
-impl_tuple_from_row!(T1, T2, T4, T5, T6, T7, T8);
-impl_tuple_from_row!(T1, T2, T4, T5, T6, T7, T8, T9);
-impl_tuple_from_row!(T1, T2, T4, T5, T6, T7, T8, T9, T10);
-impl_tuple_from_row!(T1, T2, T4, T5, T6, T7, T8, T9, T10, T11);
-impl_tuple_from_row!(T1, T2, T4, T5, T6, T7, T8, T9, T10, T11, T12);
-impl_tuple_from_row!(T1, T2, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13);
-impl_tuple_from_row!(T1, T2, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14);
-impl_tuple_from_row!(T1, T2, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15);
-impl_tuple_from_row!(T1, T2, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16);
 
 #[derive(Debug, Clone)]
 pub struct ColumnSpec {

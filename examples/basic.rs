@@ -52,7 +52,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    // Or as custom strings that derive FromRow
+    // Or as custom structs that derive FromRow
     #[derive(Debug, FromRow)]
     struct RowData {
         a: i32,
