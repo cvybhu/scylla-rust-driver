@@ -1,5 +1,5 @@
 use anyhow::Result;
-use scylla::transport::session::Session;
+use scylla::transport::session::{IntoTypedRows, Session};
 use scylla_macros::*;
 use std::env;
 

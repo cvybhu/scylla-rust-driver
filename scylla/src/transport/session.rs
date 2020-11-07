@@ -45,40 +45,23 @@ struct NodePool {
     shard_info: Option<ShardInfo>,
 }
 
-pub struct QueryRows(pub Vec<result::Row>);
-
-impl QueryRows {
-    pub fn into_typed<RowT>(self) -> impl Iterator<Item = RowT>
-    where
-        RowT: From<result::Row>,
-    {
-        self.0.into_iter().map(RowT::from)
+// Adds method Vec<result::Row>::into_typed<RowT>(self)
+// It transforms the Vec into iterator mapping to custom row type
+impl IntoTypedRows for Vec<result::Row> {
+    fn into_typed<RowT: From<result::Row>>(self) -> TypedRowIter<RowT> {
+        self.into_iter().map(RowT::from)
     }
 }
 
-// Trait implementations to allow using QueryRows like Vec<result::Row>
-impl std::ops::Deref for QueryRows {
-    type Target = Vec<result::Row>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
+// Trait used to implement Vec<result::Row>::into_typed<RowT>(self)
+// This is the only way to add custom method to Vec
+pub trait IntoTypedRows {
+    fn into_typed<RowT: From<result::Row>>(self) -> TypedRowIter<RowT>;
 }
 
-impl std::ops::DerefMut for QueryRows {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl IntoIterator for QueryRows {
-    type Item = result::Row;
-    type IntoIter = std::vec::IntoIter<Self::Item>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
+// Iterator that maps a Vec<result::Row> into custom RowType used by IntoTypedRows::into_typed
+// impl Trait doesn't compile so we have to be explicit
+type TypedRowIter<RowT> = std::iter::Map<std::vec::IntoIter<result::Row>, fn(result::Row) -> RowT>;
 
 /// Represents a CQL session, which can be used to communicate
 /// with the database
@@ -130,7 +113,7 @@ impl Session {
         &self,
         query: impl Into<Query>,
         values: &'a [Value],
-    ) -> Result<Option<QueryRows>> {
+    ) -> Result<Option<Vec<result::Row>>> {
         self.any_connection()?
             .query_single_page(query, values)
             .await
