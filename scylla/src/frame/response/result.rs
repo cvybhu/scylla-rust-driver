@@ -143,8 +143,10 @@ macro_rules! impl_tuple_from_row {
         {
             fn from(row: Row) -> Self {
                 let mut vals_iter = row.columns.into_iter();
+                const TUPLE_AS_STR: &'static str = stringify!(($($Ti,)+));
+
                 (
-                    $($Ti::from(vals_iter.next().unwrap()),)+
+                    $($Ti::from(vals_iter.next().expect(&format!("Row is too short to convert to {}!", TUPLE_AS_STR))),)+
                 )
             }
         }
