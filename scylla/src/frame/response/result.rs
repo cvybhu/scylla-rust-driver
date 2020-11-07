@@ -118,6 +118,12 @@ impl<T: FromCQLVal<CQLValue>> FromCQLVal<Option<CQLValue>> for T {
     }
 }
 
+impl<T: FromCQLVal<CQLValue>> FromCQLVal<Option<CQLValue>> for Option<T> {
+    fn from(cql_val_opt: Option<CQLValue>) -> Self {
+        cql_val_opt.map(T::from)
+    }
+}
+
 macro_rules! impl_from_cql_val {
     ($T:ty, $convert_func:ident) => {
         impl FromCQLVal<CQLValue> for $T {
