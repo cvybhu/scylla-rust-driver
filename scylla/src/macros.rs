@@ -13,3 +13,6 @@ macro_rules! values {
         }
     };
 }
+
+// Derives From<Row> for given struct
+pub use scylla_macros::FromRow;

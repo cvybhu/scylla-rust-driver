@@ -89,3 +89,92 @@ impl_tuple_from_row!(T1, T2, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13);
 impl_tuple_from_row!(T1, T2, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14);
 impl_tuple_from_row!(T1, T2, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15);
 impl_tuple_from_row!(T1, T2, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16);
+
+#[cfg(test)]
+mod tests {
+    use super::{CQLValue, FromCQLVal, Row};
+    use crate as scylla;
+    use crate::macros::FromRow;
+    use std::net::{IpAddr, Ipv4Addr};
+
+    #[test]
+    fn i32_from_cql() {
+        assert_eq!(1234, i32::from_cql(CQLValue::Int(1234)));
+    }
+
+    #[test]
+    fn i64_from_cql() {
+        assert_eq!(1234, i64::from_cql(CQLValue::BigInt(1234)));
+    }
+
+    #[test]
+    fn string_from_cql() {
+        assert_eq!(
+            "ascii_test".to_string(),
+            String::from_cql(CQLValue::Ascii("ascii_test".to_string()))
+        );
+        assert_eq!(
+            "text_test".to_string(),
+            String::from_cql(CQLValue::Text("text_test".to_string()))
+        );
+    }
+
+    #[test]
+    fn ip_addr_from_cql() {
+        let ip_addr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+        assert_eq!(ip_addr, IpAddr::from_cql(CQLValue::Inet(ip_addr)));
+    }
+
+    #[test]
+    fn vec_from_cql() {
+        let cql_val = CQLValue::Set(vec![CQLValue::Int(1), CQLValue::Int(2), CQLValue::Int(3)]);
+        assert_eq!(vec![1, 2, 3], Vec::<i32>::from_cql(cql_val));
+    }
+
+    #[test]
+    fn tuple_from_row() {
+        let row = Row {
+            columns: vec![
+                Some(CQLValue::Int(1)),
+                Some(CQLValue::Text("some_text".to_string())),
+                None,
+            ],
+        };
+
+        let (a, b, c) = <(i32, Option<String>, Option<i64>)>::from(row);
+        assert_eq!(a, 1);
+        assert_eq!(b, Some("some_text".to_string()));
+        assert_eq!(c, None);
+
+        let row2 = Row {
+            columns: vec![Some(CQLValue::Int(1)), Some(CQLValue::Int(2))],
+        };
+
+        let (d,) = <(i32,)>::from(row2);
+        assert_eq!(d, 1);
+    }
+
+    #[test]
+    fn struct_from_row() {
+        #[derive(FromRow)]
+        struct MyRow {
+            a: i32,
+            b: Option<String>,
+            c: Option<Vec<i32>>,
+        }
+
+        let row = Row {
+            columns: vec![
+                Some(CQLValue::Int(16)),
+                None,
+                Some(CQLValue::Set(vec![CQLValue::Int(1), CQLValue::Int(2)])),
+            ],
+        };
+
+        let my_row: MyRow = MyRow::from(row);
+
+        assert_eq!(my_row.a, 16);
+        assert_eq!(my_row.b, None);
+        assert_eq!(my_row.c, Some(vec![1, 2]));
+    }
+}

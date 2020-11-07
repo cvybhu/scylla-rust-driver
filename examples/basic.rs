@@ -1,6 +1,6 @@
 use anyhow::Result;
+use scylla::macros::FromRow;
 use scylla::transport::session::{IntoTypedRows, Session};
-use scylla_macros::*;
 use std::env;
 
 #[tokio::main]
