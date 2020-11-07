@@ -119,12 +119,12 @@ impl<T: FromCQLVal<CQLValue>> FromCQLVal<Option<CQLValue>> for T {
 }
 
 macro_rules! impl_from_cql_val {
-    ($t:ty, $convert_func:ident) => {
-        impl FromCQLVal<CQLValue> for $t {
-            fn from(cql_val: CQLValue) -> $t {
+    ($T:ty, $convert_func:ident) => {
+        impl FromCQLVal<CQLValue> for $T {
+            fn from(cql_val: CQLValue) -> $T {
                 return cql_val.$convert_func().expect(&format!(
                     "Converting from CQLValue to {} failed!",
-                    stringify!($t)
+                    stringify!($T)
                 ));
             }
         }
@@ -135,21 +135,37 @@ impl_from_cql_val!(i32, as_int); // i32::from<CQLValue>
 impl_from_cql_val!(i64, as_bigint); // i64::from<CQLValue>
 impl_from_cql_val!(String, into_string); // String::from<CQLValue>
 
-impl<T1, T2, T3> From<Row> for (T1, T2, T3)
-where
-    T1: FromCQLVal<Option<CQLValue>>,
-    T2: FromCQLVal<Option<CQLValue>>,
-    T3: FromCQLVal<Option<CQLValue>>,
-{
-    fn from(row: Row) -> (T1, T2, T3) {
-        let mut row_iter = row.columns.into_iter();
-        (
-            T1::from(row_iter.next().unwrap()),
-            T2::from(row_iter.next().unwrap()),
-            T3::from(row_iter.next().unwrap()),
-        )
+macro_rules! impl_tuple_from_row {
+    ( $($Ti:tt),+ ) => {
+        impl<$($Ti),+> From<Row> for ($($Ti,)+)
+        where
+            $($Ti: FromCQLVal<Option<CQLValue>>),+
+        {
+            fn from(row: Row) -> Self {
+                let mut vals_iter = row.columns.into_iter();
+                (
+                    $($Ti::from(vals_iter.next().unwrap()),)+
+                )
+            }
+        }
     }
 }
+
+impl_tuple_from_row!(T1);
+impl_tuple_from_row!(T1, T2);
+impl_tuple_from_row!(T1, T2, T3);
+impl_tuple_from_row!(T1, T2, T4, T5);
+impl_tuple_from_row!(T1, T2, T4, T5, T6);
+impl_tuple_from_row!(T1, T2, T4, T5, T6, T7);
+impl_tuple_from_row!(T1, T2, T4, T5, T6, T7, T8);
+impl_tuple_from_row!(T1, T2, T4, T5, T6, T7, T8, T9);
+impl_tuple_from_row!(T1, T2, T4, T5, T6, T7, T8, T9, T10);
+impl_tuple_from_row!(T1, T2, T4, T5, T6, T7, T8, T9, T10, T11);
+impl_tuple_from_row!(T1, T2, T4, T5, T6, T7, T8, T9, T10, T11, T12);
+impl_tuple_from_row!(T1, T2, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13);
+impl_tuple_from_row!(T1, T2, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14);
+impl_tuple_from_row!(T1, T2, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15);
+impl_tuple_from_row!(T1, T2, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16);
 
 #[derive(Debug, Clone)]
 pub struct ColumnSpec {
