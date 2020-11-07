@@ -45,10 +45,7 @@ async fn main() -> Result<()> {
         .await?;
 
     if let Some(rs) = session.query("SELECT a, b, c FROM ks.t", &[]).await? {
-        for r in rs {
-            let a = r.columns[0].as_ref().unwrap().as_int().unwrap();
-            let b = r.columns[1].as_ref().unwrap().as_int().unwrap();
-            let c = r.columns[2].as_ref().unwrap().as_text().unwrap();
+        for (a, b, c) in rs.into_typed::<(i32, i32, String)>() {
             println!("a, b, c: {}, {}, {}", a, b, c);
         }
     }

@@ -81,6 +81,14 @@ impl CQLValue {
         }
     }
 
+    pub fn into_string(self) -> Option<String> {
+        match self {
+            Self::Ascii(s) => Some(s),
+            Self::Text(s) => Some(s),
+            _ => None,
+        }
+    }
+
     pub fn as_inet(&self) -> Option<IpAddr> {
         match self {
             Self::Inet(a) => Some(*a),
@@ -96,6 +104,51 @@ impl CQLValue {
     }
 
     // TODO
+}
+
+// This trait must exist because we can't define From<Option<CqlVal>> for String
+// Neither Option nor String are defined in this crate
+pub trait FromCQLVal<T> {
+    fn from(cql_val: T) -> Self;
+}
+
+impl<T: FromCQLVal<CQLValue>> FromCQLVal<Option<CQLValue>> for T {
+    fn from(cql_val_opt: Option<CQLValue>) -> Self {
+        T::from(cql_val_opt.expect("Tried to convert from CQLValue that is NULL!"))
+    }
+}
+
+macro_rules! impl_from_cql_val {
+    ($t:ty, $convert_func:ident) => {
+        impl FromCQLVal<CQLValue> for $t {
+            fn from(cql_val: CQLValue) -> $t {
+                return cql_val.$convert_func().expect(&format!(
+                    "Converting from CQLValue to {} failed!",
+                    stringify!($t)
+                ));
+            }
+        }
+    };
+}
+
+impl_from_cql_val!(i32, as_int); // i32::from<CQLValue>
+impl_from_cql_val!(i64, as_bigint); // i64::from<CQLValue>
+impl_from_cql_val!(String, into_string); // String::from<CQLValue>
+
+impl<T1, T2, T3> From<Row> for (T1, T2, T3)
+where
+    T1: FromCQLVal<Option<CQLValue>>,
+    T2: FromCQLVal<Option<CQLValue>>,
+    T3: FromCQLVal<Option<CQLValue>>,
+{
+    fn from(row: Row) -> (T1, T2, T3) {
+        let mut row_iter = row.columns.into_iter();
+        (
+            T1::from(row_iter.next().unwrap()),
+            T2::from(row_iter.next().unwrap()),
+            T3::from(row_iter.next().unwrap()),
+        )
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -20,7 +20,7 @@ use crate::frame::{
 use crate::query::Query;
 use crate::routing::ShardInfo;
 use crate::statement::prepared_statement::PreparedStatement;
-use crate::transport::Compression;
+use crate::transport::{session::QueryRows, Compression};
 
 pub struct Connection {
     submit_channel: mpsc::Sender<Task>,
@@ -91,11 +91,11 @@ impl Connection {
         &self,
         query: impl Into<Query>,
         values: &'a [Value],
-    ) -> Result<Option<Vec<result::Row>>> {
+    ) -> Result<Option<QueryRows>> {
         let result = self.query(&query.into(), values, None).await?;
         match result {
             Response::Error(err) => Err(err.into()),
-            Response::Result(result::Result::Rows(rs)) => Ok(Some(rs.rows)),
+            Response::Result(result::Result::Rows(rs)) => Ok(Some(QueryRows(rs.rows))),
             Response::Result(_) => Ok(None),
             _ => Err(anyhow!("Unexpected frame received")),
         }

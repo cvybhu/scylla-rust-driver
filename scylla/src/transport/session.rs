@@ -45,6 +45,41 @@ struct NodePool {
     shard_info: Option<ShardInfo>,
 }
 
+pub struct QueryRows(pub Vec<result::Row>);
+
+impl QueryRows {
+    pub fn into_typed<RowT>(self) -> Vec<RowT>
+    where
+        RowT: From<result::Row>,
+    {
+        self.0.into_iter().map(RowT::from).collect()
+    }
+}
+
+// Trait implementations to allow using QueryRows like Vec<result::Row>
+impl std::ops::Deref for QueryRows {
+    type Target = Vec<result::Row>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for QueryRows {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl IntoIterator for QueryRows {
+    type Item = result::Row;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
 /// Represents a CQL session, which can be used to communicate
 /// with the database
 impl Session {
@@ -95,7 +130,7 @@ impl Session {
         &self,
         query: impl Into<Query>,
         values: &'a [Value],
-    ) -> Result<Option<Vec<result::Row>>> {
+    ) -> Result<Option<QueryRows>> {
         self.any_connection()?
             .query_single_page(query, values)
             .await
