@@ -1,5 +1,6 @@
 use anyhow::Result;
 use scylla::transport::session::Session;
+use scylla_macros::*;
 use std::env;
 
 #[tokio::main]
@@ -44,9 +45,24 @@ async fn main() -> Result<()> {
         .execute(&prepared, &scylla::values!(44_i32, "I'm prepared 3!"))
         .await?;
 
+    // Rows can be parsed as tuples
     if let Some(rs) = session.query("SELECT a, b, c FROM ks.t", &[]).await? {
         for (a, b, c) in rs.into_typed::<(i32, i32, String)>() {
             println!("a, b, c: {}, {}, {}", a, b, c);
+        }
+    }
+
+    // Or as custom strings that derive FromRow
+    #[derive(Debug, FromRow)]
+    struct RowData {
+        a: i32,
+        b: Option<i32>,
+        c: String,
+    }
+
+    if let Some(rs) = session.query("SELECT a, b, c FROM ks.t", &[]).await? {
+        for row_data in rs.into_typed::<RowData>() {
+            println!("row_data: {:?}", row_data);
         }
     }
 
