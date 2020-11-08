@@ -66,7 +66,12 @@ macro_rules! impl_tuple_from_row {
                 const TUPLE_AS_STR: &'static str = stringify!(($($Ti,)+));
 
                 (
-                    $($Ti::from_cql(vals_iter.next().expect(&format!("Row is too short to convert to {}!", TUPLE_AS_STR))),)+
+                    $(
+                        $Ti::from_cql(vals_iter
+                                      .next()
+                                      .unwrap_or_else(
+                                       || panic!("Row is too short to convert to {}!", TUPLE_AS_STR)))
+                    ,)+
                 )
             }
         }
