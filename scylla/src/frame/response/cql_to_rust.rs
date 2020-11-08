@@ -182,4 +182,16 @@ mod tests {
         assert_eq!(my_row.b, None);
         assert_eq!(my_row.c, Some(vec![1, 2]));
     }
+
+    #[test]
+    #[should_panic]
+    fn from_cql_null_panic() {
+        let _ = i32::from_cql(None);
+    }
+
+    #[test]
+    #[should_panic]
+    fn from_cql_wrong_type_panic() {
+        let _ = i32::from_cql(CQLValue::BigInt(1234));
+    }
 }
