@@ -2,6 +2,8 @@ use proc_macro::TokenStream;
 use quote::{quote, quote_spanned};
 use syn::{parse_macro_input, spanned::Spanned, Data, DeriveInput, Fields};
 
+/// #[derive(FromRow)] derives From<Row> for struct
+/// Works only on simple structs without generics etc
 #[proc_macro_derive(FromRow)]
 pub fn from_row_derive(tokens_input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(tokens_input as DeriveInput);
