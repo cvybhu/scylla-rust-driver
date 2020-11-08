@@ -1,7 +1,7 @@
 use super::result::{CQLValue, Row};
 use std::net::IpAddr;
 
-// This trait defines a way to convert CQLValue or Option<CQLValue> into some rust type
+/// This trait defines a way to convert CQLValue or Option<CQLValue> into some rust type  
 // We can't use From trait because impl From<Option<CQLValue>> for String {...}
 // is forbidden since neither From nor String are defined in this crate
 pub trait FromCQLVal<T> {
