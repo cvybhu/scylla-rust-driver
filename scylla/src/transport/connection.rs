@@ -16,7 +16,7 @@ use crate::frame::{
     self,
     request::{self, batch, execute, query, Request, RequestOpcode},
     response::{result, Response, ResponseOpcode},
-    value::Value,
+    value::{AddValueError, SerializedValues},
     FrameParams, RequestBodyWithExtensions,
 };
 use crate::query::Query;
@@ -92,7 +92,7 @@ impl Connection {
     pub async fn query_single_page(
         &self,
         query: impl Into<Query>,
-        values: &[Value],
+        values: &SerializedValues,
     ) -> Result<Option<Vec<result::Row>>> {
         let result = self.query(&query.into(), values, None).await?;
         match result {
@@ -106,13 +106,13 @@ impl Connection {
     pub async fn query(
         &self,
         query: &Query,
-        values: &[Value],
+        values: &SerializedValues,
         paging_state: Option<Bytes>,
     ) -> Result<Response> {
         let query_frame = query::Query {
             contents: query.get_contents().to_owned(),
             parameters: query::QueryParameters {
-                values,
+                values: Some(values),
                 page_size: query.get_page_size(),
                 paging_state,
                 ..Default::default()
@@ -125,13 +125,13 @@ impl Connection {
     pub async fn execute(
         &self,
         prepared_statement: &PreparedStatement,
-        values: &[Value],
+        values: &SerializedValues,
         paging_state: Option<Bytes>,
     ) -> Result<Response> {
         let execute_frame = execute::Execute {
             id: prepared_statement.get_id().to_owned(),
             parameters: query::QueryParameters {
-                values,
+                values: Some(values),
                 page_size: prepared_statement.get_page_size(),
                 paging_state,
                 ..Default::default()
@@ -141,7 +141,11 @@ impl Connection {
         self.send_request(&execute_frame, true).await
     }
 
-    pub async fn batch(&self, batch: &Batch, values: &[impl AsRef<[Value]>]) -> Result<Response> {
+    pub async fn batch(
+        &self,
+        batch: &Batch,
+        values: &[Result<SerializedValues, AddValueError>],
+    ) -> Result<Response> {
         let statements_count = batch.get_statements().len();
         if statements_count != values.len() {
             return Err(anyhow!(
@@ -151,10 +155,17 @@ impl Connection {
             ));
         }
 
+        // Ensure all values are valid
+        for value in values {
+            if let Err(e) = value {
+                return Err(e.clone().into());
+            }
+        }
+
         let statements = batch
             .get_statements()
             .iter()
-            .zip(values.iter())
+            .zip(values.iter().map(|v_res| v_res.as_ref().unwrap()))
             .map(|(e, v)| batch::BatchStatementWithValues {
                 statement: match e {
                     BatchStatement::Query(q) => {
@@ -164,7 +175,7 @@ impl Connection {
                         batch::BatchStatement::PreparedStatementID(s.get_id())
                     }
                 },
-                values: v.as_ref(),
+                values: &v,
             });
 
         let batch_frame = batch::Batch {

@@ -16,7 +16,7 @@ use crate::frame::{
         result::{Result, Row, Rows},
         Response,
     },
-    value::Value,
+    value::SerializedValues,
 };
 use crate::statement::{prepared_statement::PreparedStatement, query::Query};
 use crate::transport::connection::Connection;
@@ -71,7 +71,7 @@ impl RowIterator {
     pub(crate) fn new_for_query(
         conn: Arc<Connection>,
         query: Query,
-        values: Vec<Value>,
+        values: SerializedValues,
         metrics: Arc<Metrics>,
     ) -> RowIterator {
         let metrics_copy = metrics.clone();
@@ -96,7 +96,7 @@ impl RowIterator {
     pub(crate) fn new_for_prepared_statement(
         conn: Arc<Connection>,
         prepared_statement: PreparedStatement,
-        values: Vec<Value>,
+        values: SerializedValues,
         metrics: Arc<Metrics>,
     ) -> RowIterator {
         let metrics_copy = metrics.clone();
