@@ -15,7 +15,7 @@ use crate::frame::{
         result::{Result, Row, Rows},
         Response,
     },
-    value::Value,
+    value::SerializedValues,
 };
 use crate::statement::{prepared_statement::PreparedStatement, query::Query};
 use crate::transport::connection::Connection;
@@ -69,7 +69,7 @@ impl RowIterator {
     pub(crate) fn new_for_query(
         conn: Arc<Connection>,
         query: Query,
-        values: Vec<Value>,
+        values: SerializedValues,
     ) -> RowIterator {
         Self::new_with_worker(|mut helper| async move {
             let mut paging_state = None;
@@ -86,7 +86,7 @@ impl RowIterator {
     pub(crate) fn new_for_prepared_statement(
         conn: Arc<Connection>,
         prepared_statement: PreparedStatement,
-        values: Vec<Value>,
+        values: SerializedValues,
     ) -> RowIterator {
         Self::new_with_worker(|mut helper| async move {
             let mut paging_state = None;

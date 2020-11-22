@@ -4,11 +4,8 @@ use anyhow::Result;
 use byteorder::{BigEndian, ReadBytesExt};
 use bytes::BufMut;
 use std::collections::HashMap;
-use std::convert::TryInto;
 use std::str;
 use uuid::Uuid;
-
-use crate::frame::value::Value;
 
 fn read_raw_bytes<'a>(count: usize, buf: &mut &'a [u8]) -> Result<&'a [u8]> {
     if buf.len() < count {
@@ -344,21 +341,4 @@ fn type_uuid() {
     write_uuid(&u, &mut buf);
     let u2 = read_uuid(&mut &*buf).unwrap();
     assert_eq!(u, u2);
-}
-
-pub fn write_values(values: &[Value], buf: &mut impl BufMut) -> Result<()> {
-    buf.put_i16(values.len().try_into()?);
-
-    for value in values {
-        match value {
-            Value::Val(v) => {
-                write_int(v.len().try_into()?, buf);
-                buf.put_slice(&v[..]);
-            }
-            Value::Null => write_int(-1, buf),
-            Value::NotSet => write_int(-2, buf),
-        }
-    }
-
-    Ok(())
 }

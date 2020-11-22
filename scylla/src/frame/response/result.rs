@@ -306,6 +306,8 @@ fn deser_prepared_metadata(buf: &mut &[u8]) -> AResult<PreparedMetadata> {
         pk_indexes.push(types::read_short(buf)? as u16);
     }
 
+    pk_indexes.sort_unstable();
+
     let global_table_spec = if global_tables_spec {
         Some(deser_table_spec(buf)?)
     } else {
