@@ -3,6 +3,7 @@ pub mod connection;
 mod connection_keeper;
 pub mod load_balancing;
 mod node;
+mod retry_policy;
 pub mod session;
 pub mod session_builder;
 mod topology;
