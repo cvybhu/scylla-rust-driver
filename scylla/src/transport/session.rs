@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tokio::net::lookup_host;
 
-use super::errors::{BadQuery, NewSessionError, QueryError};
+use super::errors::{BadQuery, DBError, NewSessionError, QueryError};
 use crate::batch::Batch;
 use crate::cql_to_rust::FromRow;
 use crate::frame::response::cql_to_rust::FromRowError;
@@ -417,8 +417,8 @@ impl Session {
             .await?;
         match result {
             Response::Error(err) => {
-                match err.code {
-                    9472 => {
+                match err.error {
+                    DBError::Unprepared => {
                         // Repreparation of a statement is needed
                         let reprepared = connection.prepare(prepared.get_statement()).await?;
                         // Reprepared statement should keep its id - it's the md5 sum
