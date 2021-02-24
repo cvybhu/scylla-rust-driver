@@ -129,6 +129,17 @@ impl Node {
         }
     }
 
+    /// Get connection which should be used to connect using given token or any other if this one is broken
+    pub async fn connection_for_token_or_any(
+        &self,
+        token: Token,
+    ) -> Result<Arc<Connection>, QueryError> {
+        match self.connection_for_token(token).await {
+            Ok(conn_for_token) => Ok(conn_for_token),
+            Err(_) => self.random_connection().await,
+        }
+    }
+
     /// Get random connection
     pub async fn random_connection(&self) -> Result<Arc<Connection>, QueryError> {
         let connections: Arc<NodeConnections> = self.connections.read().unwrap().clone();
@@ -139,9 +150,23 @@ impl Node {
                 shard_info,
                 shard_conns,
             } => {
-                let shard = rand::thread_rng().gen_range(0..shard_info.nr_shards as u32);
-                // It's guaranteed by NodeWorker that shard_conns.len() == shard_info.nr_shards
-                shard_conns[shard as usize].get_connection().await
+                let random_shard = rand::thread_rng().gen_range(0..shard_info.nr_shards as u32);
+
+                let mut last_error: QueryError =
+                    QueryError::ProtocolError("No connections in node - driver bug!");
+
+                // Try getting first working connection starting at random_shard
+                for i in 0..shard_info.nr_shards {
+                    let cur_shard: usize = (random_shard as usize + i as usize) % shard_conns.len();
+
+                    // It's guaranteed by NodeWorker that shard_conns.len() == shard_info.nr_shards
+                    match shard_conns[cur_shard].get_connection().await {
+                        Ok(connection) => return Ok(connection),
+                        Err(e) => last_error = e,
+                    };
+                }
+
+                Err(last_error) // All connections broken, return last error
             }
         }
     }

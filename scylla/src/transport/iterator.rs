@@ -110,7 +110,7 @@ impl RowIterator {
                     let now = Instant::now();
                     metrics_copy.inc_total_paged_queries();
                     let rows = conn
-                        .execute(&prepared_statement, &values, paging_state)
+                        .execute_raw_response(&prepared_statement, &values, paging_state)
                         .await;
                     let _ = metrics_copy.log_query_latency(now.elapsed().as_millis() as u64);
                     paging_state = helper.handle_response(rows).await;

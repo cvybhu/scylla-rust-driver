@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tokio::net::lookup_host;
 
-use super::errors::{BadQuery, DBError, NewSessionError, QueryError};
+use super::errors::{BadQuery, NewSessionError, QueryError};
 use crate::batch::Batch;
 use crate::cql_to_rust::FromRow;
 use crate::frame::response::cql_to_rust::FromRowError;
@@ -21,12 +21,14 @@ use crate::transport::{
     load_balancing::{LoadBalancingPolicy, RoundRobinPolicy, Statement, TokenAwarePolicy},
     metrics::{Metrics, MetricsView},
     node::Node,
+    retry_policy::{DefaultRetryPolicy, QueryInfo, RetryDecision, RetryPolicy},
     Compression,
 };
 
 pub struct Session {
     cluster: Cluster,
     load_balancer: Box<dyn LoadBalancingPolicy>,
+    retry_policy: Box<dyn RetryPolicy + Send + Sync>,
 
     metrics: Arc<Metrics>,
 }
@@ -50,6 +52,8 @@ pub struct SessionConfig {
 
     pub used_keyspace: Option<String>,
     pub keyspace_case_sensitive: bool,
+
+    pub retry_policy: Option<Box<dyn RetryPolicy + Send + Sync>>,
     /*
     These configuration options will be added in the future:
 
@@ -93,6 +97,7 @@ impl SessionConfig {
             load_balancing: Box::new(TokenAwarePolicy::new(Box::new(RoundRobinPolicy::new()))),
             used_keyspace: None,
             keyspace_case_sensitive: false,
+            retry_policy: None,
         }
     }
 
@@ -235,10 +240,15 @@ impl Session {
         let cluster = Cluster::new(&node_addresses, config.get_connection_config()).await?;
         let metrics = Arc::new(Metrics::new());
 
+        let retry_policy = config
+            .retry_policy
+            .unwrap_or_else(|| Box::new(DefaultRetryPolicy::new()));
+
         let session = Session {
             cluster,
             load_balancer: config.load_balancing,
             metrics,
+            retry_policy,
         };
 
         if let Some(keyspace_name) = config.used_keyspace {
@@ -280,7 +290,7 @@ impl Session {
         query: impl Into<Query>,
         values: impl ValueList,
     ) -> Result<Option<Vec<result::Row>>, QueryError> {
-        let query: Query = query.into();
+        let mut query: Query = query.into();
         let query_text: &str = query.get_contents();
 
         // In case the user tried doing session.query("use keyspace ks") run session::use_keyspace
@@ -303,12 +313,52 @@ impl Session {
             token: None,
             keyspace: None,
         };
-        let node = self.load_balancing_plan(statement_info);
 
-        node.random_connection()
-            .await?
-            .query_single_page(query, values)
-            .await
+        let cluster_data = self.cluster.get_data();
+        let query_plan = self.load_balancer.plan(&statement_info, &cluster_data);
+
+        let mut retry_policy = query
+            .retry_policy
+            .take()
+            .unwrap_or_else(|| self.retry_policy.clone_boxed());
+
+        let mut last_error: QueryError =
+            QueryError::ProtocolError("Empty query plan - driver bug!");
+
+        'nodes_in_plan: for node in query_plan {
+            'same_node_retries: loop {
+                // Try performing the query on the current node
+                let query_result = match node.random_connection().await {
+                    Ok(conn) => conn.query_single_page(query.clone(), &values).await,
+                    Err(e) => {
+                        last_error = e; // All connections broken, try another node
+                        continue 'nodes_in_plan;
+                    }
+                };
+
+                let query_error: QueryError = match query_result {
+                    Ok(good_result) => return Ok(good_result),
+                    Err(e) => e,
+                };
+
+                last_error = query_error;
+
+                // Use retry policy to decide what to do next
+                let query_info = QueryInfo {
+                    error: &last_error,
+                    is_idempotent: query.is_idempotent,
+                    consistency: query.consistency,
+                };
+
+                match retry_policy.decide_should_retry(query_info) {
+                    RetryDecision::RetrySameNode => continue 'same_node_retries,
+                    RetryDecision::RetryNextNode => continue 'nodes_in_plan,
+                    RetryDecision::DontRetry => return Err(last_error),
+                };
+            }
+        }
+
+        return Err(last_error);
     }
 
     pub async fn query_iter(
@@ -409,47 +459,52 @@ impl Session {
             token: Some(token),
             keyspace: None,
         };
-        let node = self.load_balancing_plan(statement_info);
 
-        let connection = node.connection_for_token(token).await?;
-        let result = connection
-            .execute(prepared, &serialized_values, None)
-            .await?;
-        match result {
-            Response::Error(err) => {
-                match err.error {
-                    DBError::Unprepared => {
-                        // Repreparation of a statement is needed
-                        let reprepared = connection.prepare(prepared.get_statement()).await?;
-                        // Reprepared statement should keep its id - it's the md5 sum
-                        // of statement contents
-                        if reprepared.get_id() != prepared.get_id() {
-                            return Err(QueryError::ProtocolError(
-                                "Prepared statement Id changed, md5 sum should stay the same",
-                            ));
-                        }
+        let cluster_data = self.cluster.get_data();
+        let query_plan = self.load_balancer.plan(&statement_info, &cluster_data);
 
-                        let result = connection
-                            .execute(prepared, &serialized_values, None)
-                            .await?;
-                        match result {
-                            Response::Error(err) => Err(err.into()),
-                            Response::Result(result::Result::Rows(rs)) => Ok(Some(rs.rows)),
-                            Response::Result(_) => Ok(None),
-                            _ => Err(QueryError::ProtocolError(
-                                "EXECUTE: Unexpected server response",
-                            )),
-                        }
+        let mut retry_policy = match &prepared.retry_policy {
+            Some(custom_policy) => custom_policy.clone_boxed(),
+            None => self.retry_policy.clone_boxed(),
+        };
+
+        let mut last_error: QueryError =
+            QueryError::ProtocolError("Empty query plan - driver bug!");
+
+        'nodes_in_plan: for node in query_plan {
+            'same_node_retries: loop {
+                // Try performing the query on the current node
+                let query_result = match node.connection_for_token_or_any(token).await {
+                    Ok(conn) => conn.execute(prepared, &values, None).await,
+                    Err(e) => {
+                        last_error = e; // All connections broken, try another node
+                        continue 'nodes_in_plan;
                     }
-                    _ => Err(err.into()),
-                }
+                };
+
+                let query_error: QueryError = match query_result {
+                    Ok(good_result) => return Ok(good_result),
+                    Err(e) => e,
+                };
+
+                last_error = query_error;
+
+                // Use retry policy to decide what to do next
+                let query_info = QueryInfo {
+                    error: &last_error,
+                    is_idempotent: prepared.is_idempotent,
+                    consistency: prepared.consistency,
+                };
+
+                match retry_policy.decide_should_retry(query_info) {
+                    RetryDecision::RetrySameNode => continue 'same_node_retries,
+                    RetryDecision::RetryNextNode => continue 'nodes_in_plan,
+                    RetryDecision::DontRetry => return Err(last_error),
+                };
             }
-            Response::Result(result::Result::Rows(rs)) => Ok(Some(rs.rows)),
-            Response::Result(_) => Ok(None),
-            _ => Err(QueryError::ProtocolError(
-                "EXECUTE: Unexpected server response",
-            )),
         }
+
+        return Err(last_error);
     }
 
     pub async fn execute_iter(

@@ -22,7 +22,7 @@ pub trait LoadBalancingPolicy: Send + Sync {
         &self,
         statement: &Statement,
         cluster: &'a ClusterData,
-    ) -> Box<dyn Iterator<Item = Arc<Node>> + 'a>;
+    ) -> Box<dyn Iterator<Item = Arc<Node>> + Send + Sync + 'a>;
 
     /// Returns name of load balancing policy
     fn name(&self) -> String;
@@ -35,7 +35,7 @@ pub trait ChildLoadBalancingPolicy: LoadBalancingPolicy {
     fn apply_child_policy(
         &self,
         plan: &mut dyn Iterator<Item = Arc<Node>>,
-    ) -> Box<dyn Iterator<Item = Arc<Node>>>;
+    ) -> Box<dyn Iterator<Item = Arc<Node>> + Send + Sync>;
 }
 
 /// A Round-robin load balancing policy.
@@ -64,7 +64,7 @@ impl LoadBalancingPolicy for RoundRobinPolicy {
         &self,
         _statement: &Statement,
         cluster: &'a ClusterData,
-    ) -> Box<dyn Iterator<Item = Arc<Node>> + 'a> {
+    ) -> Box<dyn Iterator<Item = Arc<Node>> + Send + Sync + 'a> {
         let index = self.index.fetch_add(1, ORDER_TYPE);
 
         let nodes_count = cluster.all_nodes.len();
@@ -83,7 +83,7 @@ impl ChildLoadBalancingPolicy for RoundRobinPolicy {
     fn apply_child_policy(
         &self,
         plan: &mut dyn Iterator<Item = Arc<Node>>,
-    ) -> Box<dyn Iterator<Item = Arc<Node>>> {
+    ) -> Box<dyn Iterator<Item = Arc<Node>> + Send + Sync> {
         let index = self.index.fetch_add(1, ORDER_TYPE);
 
         // `plan` iterator is not cloneable, because of this we can't
@@ -111,7 +111,7 @@ impl LoadBalancingPolicy for TokenAwarePolicy {
         &self,
         statement: &Statement,
         cluster: &'a ClusterData,
-    ) -> Box<dyn Iterator<Item = Arc<Node>> + 'a> {
+    ) -> Box<dyn Iterator<Item = Arc<Node>> + Send + Sync + 'a> {
         match statement.token {
             Some(token) => {
                 // TODO: we try only the owner of the range (vnode) that the token lies in
@@ -170,7 +170,7 @@ impl DCAwareRoundRobinPolicy {
     fn retrieve_remote_nodes<'a>(
         &self,
         cluster: &'a ClusterData,
-    ) -> impl Iterator<Item = Arc<Node>> + Clone + 'a {
+    ) -> impl Iterator<Item = Arc<Node>> + Send + Sync + Clone + 'a {
         // local_dc is moved into filter closure so clone is needed
         let local_dc = self.local_dc.clone();
 
@@ -189,7 +189,7 @@ impl LoadBalancingPolicy for DCAwareRoundRobinPolicy {
         &self,
         _statement: &Statement,
         cluster: &'a ClusterData,
-    ) -> Box<dyn Iterator<Item = Arc<Node>> + 'a> {
+    ) -> Box<dyn Iterator<Item = Arc<Node>> + Send + Sync + 'a> {
         let index = self.index.fetch_add(1, ORDER_TYPE);
 
         let local_nodes = self.retrieve_local_nodes(cluster);
@@ -214,7 +214,7 @@ impl ChildLoadBalancingPolicy for DCAwareRoundRobinPolicy {
     fn apply_child_policy(
         &self,
         plan: &mut dyn Iterator<Item = Arc<Node>>,
-    ) -> Box<dyn Iterator<Item = Arc<Node>>> {
+    ) -> Box<dyn Iterator<Item = Arc<Node>> + Send + Sync> {
         let index = self.index.fetch_add(1, ORDER_TYPE);
 
         let (local_nodes, remote_nodes): (Vec<_>, Vec<_>) =

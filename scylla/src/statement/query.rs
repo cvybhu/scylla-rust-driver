@@ -1,13 +1,15 @@
 use super::Consistency;
+use crate::transport::retry_policy::RetryPolicy;
 
 /// CQL query statement.
 ///
 /// This represents a CQL query that can be executed on a server.
-#[derive(Clone)]
 pub struct Query {
     contents: String,
     page_size: Option<i32>,
-    consistency: Consistency,
+    pub consistency: Consistency,
+    pub is_idempotent: bool,
+    pub retry_policy: Option<Box<dyn RetryPolicy + Send + Sync>>,
 }
 
 impl Query {
@@ -17,6 +19,8 @@ impl Query {
             contents,
             page_size: None,
             consistency: Default::default(),
+            is_idempotent: false,
+            retry_policy: None,
         }
     }
 
@@ -61,5 +65,17 @@ impl From<String> for Query {
 impl<'a> From<&'a str> for Query {
     fn from(s: &'a str) -> Query {
         Query::new(s.to_owned())
+    }
+}
+
+impl Clone for Query {
+    fn clone(&self) -> Query {
+        Query {
+            contents: self.contents.clone(),
+            page_size: self.page_size,
+            consistency: self.consistency,
+            is_idempotent: self.is_idempotent,
+            retry_policy: self.retry_policy.as_ref().map(|rp| rp.clone_boxed()),
+        }
     }
 }

@@ -1,18 +1,22 @@
 use super::Consistency;
 use crate::frame::response::result::PreparedMetadata;
 use crate::frame::value::SerializedValues;
+use crate::transport::retry_policy::RetryPolicy;
 use bytes::{BufMut, Bytes, BytesMut};
 use std::convert::TryInto;
+use std::sync::Arc;
 use thiserror::Error;
 
 /// Represents a statement prepared on the server.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct PreparedStatement {
     id: Bytes,
     metadata: PreparedMetadata,
     statement: String,
     page_size: Option<i32>,
-    consistency: Consistency,
+    pub consistency: Consistency,
+    pub is_idempotent: bool,
+    pub retry_policy: Option<Arc<dyn RetryPolicy + Send + Sync>>,
 }
 
 impl PreparedStatement {
@@ -23,6 +27,8 @@ impl PreparedStatement {
             statement,
             page_size: None,
             consistency: Default::default(),
+            is_idempotent: false,
+            retry_policy: None,
         }
     }
 

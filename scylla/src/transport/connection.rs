@@ -14,7 +14,7 @@ use std::{
     net::{Ipv4Addr, Ipv6Addr},
 };
 
-use super::errors::{BadKeyspaceName, BadQuery, QueryError};
+use super::errors::{BadKeyspaceName, BadQuery, DBError, QueryError};
 
 use crate::batch::{Batch, BatchStatement};
 use crate::frame::{
@@ -167,25 +167,69 @@ impl Connection {
         self.send_request(&query_frame, true).await
     }
 
-    pub async fn execute(
+    // Execute a prepared statement and get raw response not parsed as rows
+    // Useful to get current paging state
+    pub async fn execute_raw_response(
         &self,
-        prepared_statement: &PreparedStatement,
+        prepared: &PreparedStatement,
         values: impl ValueList,
         paging_state: Option<Bytes>,
     ) -> Result<Response, QueryError> {
         let serialized_values = values.serialized()?;
 
         let execute_frame = execute::Execute {
-            id: prepared_statement.get_id().to_owned(),
+            id: prepared.get_id().to_owned(),
             parameters: query::QueryParameters {
-                consistency: prepared_statement.get_consistency(),
+                consistency: prepared.get_consistency(),
                 values: &serialized_values,
-                page_size: prepared_statement.get_page_size(),
+                page_size: prepared.get_page_size(),
                 paging_state,
             },
         };
 
-        self.send_request(&execute_frame, true).await
+        let response = self.send_request(&execute_frame, true).await?;
+
+        if let Response::Error(err) = &response {
+            if err.error == DBError::Unprepared {
+                // Repreparation of a statement is needed
+                let reprepared = self.prepare(prepared.get_statement()).await?;
+
+                // Reprepared statement should keep its id - it's the md5 sum
+                // of statement contents
+                if reprepared.get_id() != prepared.get_id() {
+                    return Err(QueryError::ProtocolError(
+                        "Prepared statement Id changed, md5 sum should stay the same",
+                    ));
+                }
+
+                let response_reprepared = self.send_request(&execute_frame, true).await?;
+
+                return Ok(response_reprepared);
+            }
+        }
+
+        Ok(response)
+    }
+
+    // Execute a prepared statement and get response as rows
+    pub async fn execute(
+        &self,
+        prepared: &PreparedStatement,
+        values: impl ValueList,
+        paging_state: Option<Bytes>,
+    ) -> Result<Option<Vec<result::Row>>, QueryError> {
+        let response = self
+            .execute_raw_response(prepared, values, paging_state)
+            .await?;
+
+        match response {
+            Response::Error(err) => Err(err.into()),
+            Response::Result(result::Result::Rows(rs)) => Ok(Some(rs.rows)),
+            Response::Result(_) => Ok(None),
+            _ => Err(QueryError::ProtocolError(
+                "EXECUTE: Unexpected server response",
+            )),
+        }
     }
 
     pub async fn batch(
