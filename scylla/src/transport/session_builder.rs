@@ -3,6 +3,7 @@ use super::load_balancing::LoadBalancingPolicy;
 use super::session::{Session, SessionConfig};
 use super::Compression;
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 /// SessionBuilder is used to create new Session instances
 /// # Example
@@ -186,16 +187,17 @@ impl SessionBuilder {
     /// # use scylla::{Session, SessionBuilder};
     /// # use scylla::transport::Compression;
     /// # use scylla::transport::load_balancing::RoundRobinPolicy;
+    /// # use std::sync::Arc;
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let session: Session = SessionBuilder::new()
     ///     .known_node("127.0.0.1:9042")
-    ///     .load_balancing(Box::new(RoundRobinPolicy::new()))
+    ///     .load_balancing(Arc::new(RoundRobinPolicy::new()))
     ///     .build()
     ///     .await?;
     /// # Ok(())
     /// # }
     /// ```
-    pub fn load_balancing(mut self, policy: Box<dyn LoadBalancingPolicy>) -> Self {
+    pub fn load_balancing(mut self, policy: Arc<dyn LoadBalancingPolicy>) -> Self {
         self.config.load_balancing = policy;
         self
     }
@@ -234,6 +236,7 @@ mod tests {
     use crate::transport::session::KnownNode;
     use crate::transport::Compression;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+    use std::sync::Arc;
 
     #[test]
     fn default_session_builder() {
@@ -334,7 +337,7 @@ mod tests {
             "TokenAwarePolicy{child_policy: RoundRobinPolicy}".to_string()
         );
 
-        builder = builder.load_balancing(Box::new(RoundRobinPolicy::new()));
+        builder = builder.load_balancing(Arc::new(RoundRobinPolicy::new()));
         assert_eq!(
             builder.config.load_balancing.name(),
             "RoundRobinPolicy".to_string()
@@ -370,7 +373,7 @@ mod tests {
         builder = builder.known_nodes_addr(&[addr1, addr2]);
         builder = builder.compression(Some(Compression::Snappy));
         builder = builder.tcp_nodelay(true);
-        builder = builder.load_balancing(Box::new(RoundRobinPolicy::new()));
+        builder = builder.load_balancing(Arc::new(RoundRobinPolicy::new()));
         builder = builder.use_keyspace("ks_name", true);
 
         assert_eq!(
