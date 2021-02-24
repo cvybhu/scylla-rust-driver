@@ -9,7 +9,6 @@ use crate::batch::Batch;
 use crate::cql_to_rust::FromRow;
 use crate::frame::response::cql_to_rust::FromRowError;
 use crate::frame::response::result;
-use crate::frame::response::Response;
 use crate::frame::value::{BatchValues, SerializedValues, ValueList};
 use crate::prepared_statement::{PartitionKeyError, PreparedStatement};
 use crate::query::Query;
@@ -540,20 +539,52 @@ impl Session {
             token: None,
             keyspace: None,
         };
-        let node = self.load_balancing_plan(statement_info);
 
-        let response = node
-            .random_connection()
-            .await?
-            .batch(&batch, values)
-            .await?;
-        match response {
-            Response::Error(err) => Err(err.into()),
-            Response::Result(_) => Ok(()),
-            _ => Err(QueryError::ProtocolError(
-                "BATCH: Unexpected server response",
-            )),
+        let cluster_data = self.cluster.get_data();
+        let query_plan = self.load_balancer.plan(&statement_info, &cluster_data);
+
+        let mut retry_policy = match &batch.retry_policy {
+            Some(custom_policy) => custom_policy.clone_boxed(),
+            None => self.retry_policy.clone_boxed(),
+        };
+
+        let mut last_error: QueryError =
+            QueryError::ProtocolError("Empty query plan - driver bug!");
+
+        'nodes_in_plan: for node in query_plan {
+            'same_node_retries: loop {
+                // Try performing the query on the current node
+                let query_result = match node.random_connection().await {
+                    Ok(conn) => conn.batch(&batch, &values).await,
+                    Err(e) => {
+                        last_error = e; // All connections broken, try another node
+                        continue 'nodes_in_plan;
+                    }
+                };
+
+                let query_error: QueryError = match query_result {
+                    Ok(()) => return Ok(()),
+                    Err(e) => e,
+                };
+
+                last_error = query_error;
+
+                // Use retry policy to decide what to do next
+                let query_info = QueryInfo {
+                    error: &last_error,
+                    is_idempotent: batch.is_idempotent,
+                    consistency: batch.consistency,
+                };
+
+                match retry_policy.decide_should_retry(query_info) {
+                    RetryDecision::RetrySameNode => continue 'same_node_retries,
+                    RetryDecision::RetryNextNode => continue 'nodes_in_plan,
+                    RetryDecision::DontRetry => return Err(last_error),
+                };
+            }
         }
+
+        return Err(last_error);
     }
 
     /// Sends `USE <keyspace_name>` request on all connections  

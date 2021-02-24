@@ -1,4 +1,6 @@
 use crate::statement::{prepared_statement::PreparedStatement, query::Query};
+use crate::transport::retry_policy::RetryPolicy;
+use std::sync::Arc;
 
 pub use super::Consistency;
 pub use crate::frame::request::batch::BatchType;
@@ -10,15 +12,20 @@ pub use crate::frame::request::batch::BatchType;
 pub struct Batch {
     statements: Vec<BatchStatement>,
     batch_type: BatchType,
-    consistency: Consistency,
+    pub consistency: Consistency,
+    pub is_idempotent: bool,
+    pub retry_policy: Option<Arc<dyn RetryPolicy + Send + Sync>>,
 }
 
 impl Batch {
     /// Creates a new, empty `Batch` of `batch_type` type.
     pub fn new(batch_type: BatchType) -> Self {
         Self {
+            statements: Vec::new(),
             batch_type,
-            ..Default::default()
+            consistency: Default::default(),
+            is_idempotent: false,
+            retry_policy: None,
         }
     }
 
@@ -50,11 +57,7 @@ impl Batch {
 
 impl Default for Batch {
     fn default() -> Self {
-        Self {
-            statements: Vec::new(),
-            batch_type: BatchType::Logged,
-            consistency: Default::default(),
-        }
+        Batch::new(BatchType::Logged)
     }
 }
 
