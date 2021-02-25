@@ -249,11 +249,7 @@ impl Connection {
         Ok(response)
     }
 
-    pub async fn batch(
-        &self,
-        batch: &Batch,
-        values: impl BatchValues,
-    ) -> Result<Response, QueryError> {
+    pub async fn batch(&self, batch: &Batch, values: impl BatchValues) -> Result<(), QueryError> {
         let statements_count = batch.get_statements().len();
         if statements_count != values.len() {
             return Err(QueryError::BadQuery(BadQuery::ValueLenMismatch(
@@ -279,7 +275,15 @@ impl Connection {
             consistency: batch.get_consistency(),
         };
 
-        self.send_request(&batch_frame, true).await
+        let response = self.send_request(&batch_frame, true).await?;
+
+        match response {
+            Response::Error(err) => Err(err.into()),
+            Response::Result(_) => Ok(()),
+            _ => Err(QueryError::ProtocolError(
+                "BATCH: Unexpected server response",
+            )),
+        }
     }
 
     pub async fn use_keyspace(
