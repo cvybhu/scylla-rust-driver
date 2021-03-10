@@ -5,6 +5,7 @@ use crate::transport::retry_policy::RetryPolicy;
 use bytes::{BufMut, Bytes, BytesMut};
 use std::convert::TryInto;
 use thiserror::Error;
+use uuid::Uuid;
 
 /// Represents a statement prepared on the server.
 pub struct PreparedStatement {
@@ -12,6 +13,7 @@ pub struct PreparedStatement {
     metadata: PreparedMetadata,
     statement: String,
     page_size: Option<i32>,
+    pub prepare_tracing_ids: Vec<Uuid>,
     pub consistency: Consistency,
     pub is_idempotent: bool,
     pub retry_policy: Option<Box<dyn RetryPolicy + Send + Sync>>,
@@ -28,6 +30,7 @@ impl PreparedStatement {
             consistency: Default::default(),
             is_idempotent: false,
             retry_policy: None,
+            prepare_tracing_ids: Vec::new(),
             tracing: false,
         }
     }
@@ -181,6 +184,7 @@ impl Clone for PreparedStatement {
             id: self.id.clone(),
             metadata: self.metadata.clone(),
             statement: self.statement.clone(),
+            prepare_tracing_ids: self.prepare_tracing_ids.clone(),
             page_size: self.page_size,
             consistency: self.consistency,
             is_idempotent: self.is_idempotent,

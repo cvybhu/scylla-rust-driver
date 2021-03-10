@@ -618,6 +618,12 @@ async fn test_tracing() {
         .await
         .unwrap();
 
+    test_tracing_query(&session).await;
+    test_tracing_prepare(&session).await;
+    test_tracing_execute(&session).await;
+}
+
+async fn test_tracing_query(session: &Session) {
     // A query without tracing enabled has no tracing uuid in result
     let untraced_query: Query = Query::new("SELECT * FROM test_tracing_ks.tab".to_string());
     let untraced_query_result: QueryResult = session.query(untraced_query, &[]).await.unwrap();
@@ -629,25 +635,36 @@ async fn test_tracing() {
     traced_query.tracing = true;
 
     let traced_query_result: QueryResult = session.query(traced_query, &[]).await.unwrap();
-
     assert!(traced_query_result.tracing_id.is_some());
-    let traced_query_id: Uuid = traced_query_result.tracing_id.unwrap();
 
     // Querying this uuid from tracing table gives some results
-    let mut traces_query =
-        Query::new("SELECT * FROM system_traces.sessions WHERE session_id = ?".to_string());
-    traces_query.consistency = Consistency::One;
+    assert_in_tracing_table(session, traced_query_result.tracing_id.unwrap()).await;
+}
 
-    session
-        .query(traces_query, (traced_query_id,))
+async fn test_tracing_prepare(session: &Session) {
+    // Preparing a statement without tracing enabled has no tracing uuids in result
+    let untraced_prepared = session
+        .prepare("SELECT * FROM test_tracing_ks.tab")
         .await
-        .unwrap()
-        .rows
-        .first()
-        .expect("No rows for tracing with this session id!");
+        .unwrap();
 
-    // The same works for Prepared queries
-    // A prepared without tracing enabled has no tracing uuid in result
+    assert!(untraced_prepared.prepare_tracing_ids.is_empty());
+
+    // Preparing a statement with tracing enabled has tracing uuids in result
+    let mut to_prepare_traced = Query::new("SELECT * FROM test_tracing_ks.tab".to_string());
+    to_prepare_traced.tracing = true;
+
+    let traced_prepared = session.prepare(to_prepare_traced).await.unwrap();
+    assert!(!traced_prepared.prepare_tracing_ids.is_empty());
+
+    // Querying this uuid from tracing table gives some results
+    for tracing_id in traced_prepared.prepare_tracing_ids {
+        assert_in_tracing_table(session, tracing_id).await;
+    }
+}
+
+async fn test_tracing_execute(session: &Session) {
+    // Executing a prepared statement without tracing enabled has no tracing uuid in result
     let untraced_prepared = session
         .prepare("SELECT * FROM test_tracing_ks.tab")
         .await
@@ -658,25 +675,28 @@ async fn test_tracing() {
 
     assert!(untraced_prepared_result.tracing_id.is_none());
 
-    // A prepared statement with tracing enabled has a tracing uuid in result
+    // Executing a prepared statement with tracing enabled has a tracing uuid in result
     let mut traced_prepared = session
         .prepare("SELECT * FROM test_tracing_ks.tab")
         .await
         .unwrap();
+
     traced_prepared.tracing = true;
 
     let traced_prepared_result: QueryResult = session.execute(&traced_prepared, &[]).await.unwrap();
-
     assert!(traced_prepared_result.tracing_id.is_some());
-    let traced_prepared_id: Uuid = traced_query_result.tracing_id.unwrap();
 
     // Querying this uuid from tracing table gives some results
+    assert_in_tracing_table(session, traced_prepared_result.tracing_id.unwrap()).await;
+}
+
+async fn assert_in_tracing_table(session: &Session, tracing_uuid: Uuid) {
     let mut traces_query =
         Query::new("SELECT * FROM system_traces.sessions WHERE session_id = ?".to_string());
     traces_query.consistency = Consistency::One;
 
     session
-        .query(traces_query, (traced_prepared_id,))
+        .query(traces_query, (tracing_uuid,))
         .await
         .unwrap()
         .rows

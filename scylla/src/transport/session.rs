@@ -1,5 +1,6 @@
 use futures::future::join_all;
 use std::future::Future;
+use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::lookup_host;
@@ -24,6 +25,7 @@ use crate::transport::{
     retry_policy::{DefaultRetryPolicy, QueryInfo, RetryDecision, RetryPolicy, RetrySession},
     Compression,
 };
+use uuid::Uuid;
 
 pub struct Session {
     cluster: Cluster,
@@ -339,11 +341,13 @@ impl Session {
     /// which can later be used to perform more efficient queries
     /// # Arguments
     ///#
-    pub async fn prepare(&self, query: &str) -> Result<PreparedStatement, QueryError> {
+    pub async fn prepare(&self, query: impl Into<Query>) -> Result<PreparedStatement, QueryError> {
+        let query: Query = query.into();
+
         let connections = self.cluster.get_working_connections().await?;
 
         // Prepare statements on all connections concurrently
-        let handles = connections.iter().map(|c| c.prepare(query));
+        let handles = connections.iter().map(|c| c.prepare(&query));
         let mut results = join_all(handles).await;
 
         // If at least one prepare was succesfull prepare returns Ok
@@ -361,11 +365,20 @@ impl Session {
             }
         }
 
-        let prepared: PreparedStatement = first_ok.unwrap()?;
+        let mut prepared: PreparedStatement = first_ok.ok_or_else(|| {
+            QueryError::IOError(Arc::new(std::io::Error::new(
+                ErrorKind::Other,
+                "No working connections",
+            )))
+        })??;
+
+        let mut tracing_ids: Vec<Uuid> = Vec::new();
 
         // Validate prepared ids equality
         for res in results {
-            if let Ok(statement) = res {
+            if let Ok(mut statement) = res {
+                tracing_ids.append(&mut statement.prepare_tracing_ids);
+
                 if prepared.get_id() != statement.get_id() {
                     return Err(QueryError::ProtocolError(
                         "Prepared statement Ids differ, all should be equal",
@@ -373,6 +386,8 @@ impl Session {
                 }
             }
         }
+
+        prepared.prepare_tracing_ids.append(&mut tracing_ids);
 
         Ok(prepared)
     }
