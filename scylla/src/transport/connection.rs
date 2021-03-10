@@ -162,21 +162,21 @@ impl Connection {
 
     pub async fn startup(&self, options: HashMap<String, String>) -> Result<Response, QueryError> {
         Ok(self
-            .send_request(&request::Startup { options }, false)
+            .send_request(&request::Startup { options }, false, false)
             .await?
             .response)
     }
 
     pub async fn get_options(&self) -> Result<Response, QueryError> {
         Ok(self
-            .send_request(&request::Options {}, false)
+            .send_request(&request::Options {}, false, false)
             .await?
             .response)
     }
 
     pub async fn prepare(&self, query: &str) -> Result<PreparedStatement, QueryError> {
         let result = self
-            .send_request(&request::Prepare { query }, true)
+            .send_request(&request::Prepare { query }, true, false)
             .await?
             .response;
         match result {
@@ -227,7 +227,7 @@ impl Connection {
             },
         };
 
-        self.send_request(&query_frame, true).await
+        self.send_request(&query_frame, true, query.tracing).await
     }
 
     pub async fn execute_single_page(
@@ -258,7 +258,9 @@ impl Connection {
             },
         };
 
-        let query_response = self.send_request(&execute_frame, true).await?;
+        let query_response = self
+            .send_request(&execute_frame, true, prepared_statement.tracing)
+            .await?;
 
         if let Response::Error(err) = &query_response.response {
             if err.error == DBError::Unprepared {
@@ -272,7 +274,9 @@ impl Connection {
                     ));
                 }
 
-                return self.send_request(&execute_frame, true).await;
+                return self
+                    .send_request(&execute_frame, true, prepared_statement.tracing)
+                    .await;
             }
         }
 
@@ -305,7 +309,7 @@ impl Connection {
             consistency: batch.get_consistency(),
         };
 
-        let response = self.send_request(&batch_frame, true).await?.response;
+        let response = self.send_request(&batch_frame, true, false).await?.response;
 
         match response {
             Response::Error(err) => Err(err.into()),
@@ -353,6 +357,7 @@ impl Connection {
         &self,
         request: &R,
         compress: bool,
+        tracing: bool,
     ) -> Result<QueryResponse, QueryError> {
         let body = request.to_bytes()?;
         let compression = if compress {
@@ -363,7 +368,7 @@ impl Connection {
         let body_with_ext = RequestBodyWithExtensions { body };
 
         let (flags, raw_request) =
-            frame::prepare_request_body_with_extensions(body_with_ext, compression)?;
+            frame::prepare_request_body_with_extensions(body_with_ext, compression, tracing)?;
 
         let (sender, receiver) = oneshot::channel();
 

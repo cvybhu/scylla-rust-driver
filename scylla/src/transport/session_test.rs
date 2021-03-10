@@ -1,7 +1,11 @@
 use crate::frame::value::ValueList;
+use crate::query::Query;
 use crate::routing::hash3_x64_128;
+use crate::statement::Consistency;
+use crate::transport::connection::QueryResult;
 use crate::transport::errors::{BadKeyspaceName, BadQuery, DBError, QueryError};
 use crate::{IntoTypedRows, Session, SessionBuilder};
+use uuid::Uuid;
 
 #[tokio::test]
 async fn test_unprepared_statement() {
@@ -597,4 +601,85 @@ async fn test_db_errors() {
             table: "tab".to_string()
         }
     );
+}
+
+#[tokio::test]
+async fn test_tracing() {
+    let uri = std::env::var("SCYLLA_URI").unwrap_or_else(|_| "127.0.0.1:9042".to_string());
+    let session = SessionBuilder::new().known_node(uri).build().await.unwrap();
+
+    session.query("CREATE KEYSPACE IF NOT EXISTS test_tracing_ks WITH REPLICATION = {'class' : 'SimpleStrategy', 'replication_factor' : 1}", &[]).await.unwrap();
+
+    session
+        .query(
+            "CREATE TABLE IF NOT EXISTS test_tracing_ks.tab (a text primary key)",
+            &[],
+        )
+        .await
+        .unwrap();
+
+    // A query without tracing enabled has no tracing uuid in result
+    let untraced_query: Query = Query::new("SELECT * FROM test_tracing_ks.tab".to_string());
+    let untraced_query_result: QueryResult = session.query(untraced_query, &[]).await.unwrap();
+
+    assert!(untraced_query_result.tracing_id.is_none());
+
+    // A query with tracing enabled has a tracing uuid in result
+    let mut traced_query: Query = Query::new("SELECT * FROM test_tracing_ks.tab".to_string());
+    traced_query.tracing = true;
+
+    let traced_query_result: QueryResult = session.query(traced_query, &[]).await.unwrap();
+
+    assert!(traced_query_result.tracing_id.is_some());
+    let traced_query_id: Uuid = traced_query_result.tracing_id.unwrap();
+
+    // Querying this uuid from tracing table gives some results
+    let mut traces_query =
+        Query::new("SELECT * FROM system_traces.sessions WHERE session_id = ?".to_string());
+    traces_query.consistency = Consistency::One;
+
+    session
+        .query(traces_query, (traced_query_id,))
+        .await
+        .unwrap()
+        .rows
+        .first()
+        .expect("No rows for tracing with this session id!");
+
+    // The same works for Prepared queries
+    // A prepared without tracing enabled has no tracing uuid in result
+    let untraced_prepared = session
+        .prepare("SELECT * FROM test_tracing_ks.tab")
+        .await
+        .unwrap();
+
+    let untraced_prepared_result: QueryResult =
+        session.execute(&untraced_prepared, &[]).await.unwrap();
+
+    assert!(untraced_prepared_result.tracing_id.is_none());
+
+    // A prepared statement with tracing enabled has a tracing uuid in result
+    let mut traced_prepared = session
+        .prepare("SELECT * FROM test_tracing_ks.tab")
+        .await
+        .unwrap();
+    traced_prepared.tracing = true;
+
+    let traced_prepared_result: QueryResult = session.execute(&traced_prepared, &[]).await.unwrap();
+
+    assert!(traced_prepared_result.tracing_id.is_some());
+    let traced_prepared_id: Uuid = traced_query_result.tracing_id.unwrap();
+
+    // Querying this uuid from tracing table gives some results
+    let mut traces_query =
+        Query::new("SELECT * FROM system_traces.sessions WHERE session_id = ?".to_string());
+    traces_query.consistency = Consistency::One;
+
+    session
+        .query(traces_query, (traced_prepared_id,))
+        .await
+        .unwrap()
+        .rows
+        .first()
+        .expect("No rows for tracing with this session id!");
 }
