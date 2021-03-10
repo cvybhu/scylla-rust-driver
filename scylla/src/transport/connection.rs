@@ -2,6 +2,7 @@ use bytes::Bytes;
 use futures::{future::RemoteHandle, FutureExt};
 use tokio::net::{tcp, TcpSocket, TcpStream};
 use tokio::sync::{mpsc, oneshot};
+use uuid::Uuid;
 
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -17,6 +18,7 @@ use std::{
 use super::errors::{BadKeyspaceName, BadQuery, DBError, QueryError};
 
 use crate::batch::{Batch, BatchStatement};
+use crate::frame::response::result::Row;
 use crate::frame::{
     self,
     request::{self, batch, execute, query, Request, RequestOpcode},
@@ -52,6 +54,41 @@ struct TaskResponse {
     params: FrameParams,
     opcode: ResponseOpcode,
     body: Bytes,
+}
+
+#[derive(Debug)]
+pub struct QueryResponse {
+    pub response: Response,
+    pub tracing_id: Option<Uuid>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Default)]
+pub struct QueryResult {
+    pub rows: Vec<Row>,
+    pub warnings: Vec<String>,
+    pub tracing_id: Option<Uuid>,
+}
+
+impl QueryResponse {
+    pub fn into_query_result(self) -> Result<QueryResult, QueryError> {
+        let rows: Vec<Row> = match self.response {
+            Response::Error(err) => return Err(err.into()),
+            Response::Result(result::Result::Rows(rs)) => rs.rows,
+            Response::Result(_) => Vec::new(),
+            _ => {
+                return Err(QueryError::ProtocolError(
+                    "Unexpected server response, expected Result or Error",
+                ))
+            }
+        };
+
+        Ok(QueryResult {
+            rows,
+            warnings: self.warnings,
+            tracing_id: self.tracing_id,
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -124,16 +161,24 @@ impl Connection {
     }
 
     pub async fn startup(&self, options: HashMap<String, String>) -> Result<Response, QueryError> {
-        self.send_request(&request::Startup { options }, false)
-            .await
+        Ok(self
+            .send_request(&request::Startup { options }, false)
+            .await?
+            .response)
     }
 
     pub async fn get_options(&self) -> Result<Response, QueryError> {
-        self.send_request(&request::Options {}, false).await
+        Ok(self
+            .send_request(&request::Options {}, false)
+            .await?
+            .response)
     }
 
     pub async fn prepare(&self, query: &str) -> Result<PreparedStatement, QueryError> {
-        let result = self.send_request(&request::Prepare { query }, true).await?;
+        let result = self
+            .send_request(&request::Prepare { query }, true)
+            .await?
+            .response;
         match result {
             Response::Error(err) => Err(err.into()),
             Response::Result(result::Result::Prepared(p)) => Ok(PreparedStatement::new(
@@ -151,25 +196,17 @@ impl Connection {
         &self,
         query: impl Into<Query>,
         values: impl ValueList,
-    ) -> Result<Option<Vec<result::Row>>, QueryError> {
+    ) -> Result<QueryResult, QueryError> {
         let query: Query = query.into();
-        self.query_single_page_by_ref(&query, &values).await
+        self.query(&query, values, None).await?.into_query_result()
     }
 
     pub async fn query_single_page_by_ref(
         &self,
         query: &Query,
-        values: &impl ValueList,
-    ) -> Result<Option<Vec<result::Row>>, QueryError> {
-        let result = self.query(query, values, None).await?;
-        match result {
-            Response::Error(err) => Err(err.into()),
-            Response::Result(result::Result::Rows(rs)) => Ok(Some(rs.rows)),
-            Response::Result(_) => Ok(None),
-            _ => Err(QueryError::ProtocolError(
-                "QUERY: Unexpected server response",
-            )),
-        }
+        values: impl ValueList,
+    ) -> Result<QueryResult, QueryError> {
+        self.query(query, values, None).await?.into_query_result()
     }
 
     pub async fn query(
@@ -177,7 +214,7 @@ impl Connection {
         query: &Query,
         values: impl ValueList,
         paging_state: Option<Bytes>,
-    ) -> Result<Response, QueryError> {
+    ) -> Result<QueryResponse, QueryError> {
         let serialized_values = values.serialized()?;
 
         let query_frame = query::Query {
@@ -197,17 +234,10 @@ impl Connection {
         &self,
         prepared_statement: &PreparedStatement,
         values: impl ValueList,
-    ) -> Result<Option<Vec<result::Row>>, QueryError> {
-        let response = self.execute(prepared_statement, values, None).await?;
-
-        match response {
-            Response::Error(err) => Err(err.into()),
-            Response::Result(result::Result::Rows(rs)) => Ok(Some(rs.rows)),
-            Response::Result(_) => Ok(None),
-            _ => Err(QueryError::ProtocolError(
-                "EXECUTE: Unexpected server response",
-            )),
-        }
+    ) -> Result<QueryResult, QueryError> {
+        self.execute(prepared_statement, values, None)
+            .await?
+            .into_query_result()
     }
 
     pub async fn execute(
@@ -215,7 +245,7 @@ impl Connection {
         prepared_statement: &PreparedStatement,
         values: impl ValueList,
         paging_state: Option<Bytes>,
-    ) -> Result<Response, QueryError> {
+    ) -> Result<QueryResponse, QueryError> {
         let serialized_values = values.serialized()?;
 
         let execute_frame = execute::Execute {
@@ -228,9 +258,9 @@ impl Connection {
             },
         };
 
-        let response = self.send_request(&execute_frame, true).await?;
+        let query_response = self.send_request(&execute_frame, true).await?;
 
-        if let Response::Error(err) = &response {
+        if let Response::Error(err) = &query_response.response {
             if err.error == DBError::Unprepared {
                 // Repreparation of a statement is needed
                 let reprepared = self.prepare(prepared_statement.get_statement()).await?;
@@ -246,7 +276,7 @@ impl Connection {
             }
         }
 
-        Ok(response)
+        Ok(query_response)
     }
 
     pub async fn batch(&self, batch: &Batch, values: impl BatchValues) -> Result<(), QueryError> {
@@ -275,7 +305,7 @@ impl Connection {
             consistency: batch.get_consistency(),
         };
 
-        let response = self.send_request(&batch_frame, true).await?;
+        let response = self.send_request(&batch_frame, true).await?.response;
 
         match response {
             Response::Error(err) => Err(err.into()),
@@ -299,7 +329,7 @@ impl Connection {
 
         let query_response = self.query(&query, (), None).await?;
 
-        match query_response {
+        match query_response.response {
             Response::Result(result::Result::SetKeyspace(set_keyspace)) => {
                 if set_keyspace.keyspace_name.to_lowercase()
                     != keyspace_name.as_str().to_lowercase()
@@ -323,7 +353,7 @@ impl Connection {
         &self,
         request: &R,
         compress: bool,
-    ) -> Result<Response, QueryError> {
+    ) -> Result<QueryResponse, QueryError> {
         let body = request.to_bytes()?;
         let compression = if compress {
             self.config.compression
@@ -366,13 +396,17 @@ impl Connection {
 
         // TODO: Do something more sensible with warnings
         // For now, just print them to stderr
-        for warning in body_with_ext.warnings {
+        for warning in &body_with_ext.warnings {
             eprintln!("Warning: {}", warning);
         }
 
         let response = Response::deserialize(task_response.opcode, &mut &*body_with_ext.body)?;
 
-        Ok(response)
+        Ok(QueryResponse {
+            response,
+            warnings: body_with_ext.warnings,
+            tracing_id: body_with_ext.trace_id,
+        })
     }
 
     async fn router(

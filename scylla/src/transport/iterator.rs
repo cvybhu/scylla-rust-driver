@@ -25,7 +25,7 @@ use crate::routing::Token;
 use crate::statement::Consistency;
 use crate::statement::{prepared_statement::PreparedStatement, query::Query};
 use crate::transport::cluster::ClusterData;
-use crate::transport::connection::Connection;
+use crate::transport::connection::{Connection, QueryResponse};
 use crate::transport::load_balancing::{LoadBalancingPolicy, Statement};
 use crate::transport::metrics::Metrics;
 use crate::transport::node::Node;
@@ -191,7 +191,7 @@ struct RowIteratorWorker<'a, ConnFunc, QueryFunc> {
     choose_connection: ConnFunc,
 
     // Closure used to perform a single page query
-    // AsyncFn(Arc<Connection>, Option<Bytes>) -> Result<Response, QueryError>
+    // AsyncFn(Arc<Connection>, Option<Bytes>) -> Result<QueryResponse, QueryError>
     page_query: QueryFunc,
 
     statement_info: Statement<'a>,
@@ -210,7 +210,7 @@ where
     ConnFunc: Fn(Arc<Node>) -> ConnFut,
     ConnFut: Future<Output = Result<Arc<Connection>, QueryError>>,
     QueryFunc: Fn(Arc<Connection>, Option<Bytes>) -> QueryFut,
-    QueryFut: Future<Output = Result<Response, QueryError>>,
+    QueryFut: Future<Output = Result<QueryResponse, QueryError>>,
 {
     async fn work(mut self, cluster_data: Arc<ClusterData>) {
         let query_plan = self.load_balancer.plan(&self.statement_info, &cluster_data);
@@ -270,10 +270,10 @@ where
             self.metrics.inc_total_paged_queries();
             let query_start = std::time::Instant::now();
 
-            let response: Response =
+            let query_response: QueryResponse =
                 (self.page_query)(connection.clone(), self.paging_state.clone()).await?;
 
-            match response {
+            match query_response.response {
                 Response::Result(result::Result::Rows(mut rows)) => {
                     let _ = self
                         .metrics

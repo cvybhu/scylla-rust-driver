@@ -34,7 +34,7 @@ async fn main() -> Result<()> {
         let qt = session
             .query(format!("SELECT token(pk) FROM ks.t where pk = {}", pk), &[])
             .await?
-            .unwrap()
+            .rows
             .get(0)
             .expect("token query no rows!")
             .columns[0]

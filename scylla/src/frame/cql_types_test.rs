@@ -31,11 +31,14 @@ async fn test_cql_types() {
         .await
         .unwrap();
 
-    if let Some(rows) = session.query("SELECT day FROM ks.days", &[]).await.unwrap() {
-        for row in rows.into_typed::<(u32,)>() {
-            let day: u32 = row.unwrap().0;
-            println!("day: {}", day);
-        }
+    let rows = session
+        .query("SELECT day FROM ks.days", &[])
+        .await
+        .unwrap()
+        .rows;
+    for row in rows.into_typed::<(u32,)>() {
+        let day: u32 = row.unwrap().0;
+        println!("day: {}", day);
     }
 
     // Bool test
@@ -56,15 +59,15 @@ async fn test_cql_types() {
         .await
         .unwrap();
 
-    if let Some(rows) = session
+    let rows = session
         .query("SELECT boolvalue FROM ks.truefalse", &[])
         .await
         .unwrap()
-    {
-        for row in rows.into_typed::<(bool,)>() {
-            let bool_val: bool = row.unwrap().0;
-            println!("bool value: {}", bool_val);
-        }
+        .rows;
+
+    for row in rows.into_typed::<(bool,)>() {
+        let bool_val: bool = row.unwrap().0;
+        println!("bool value: {}", bool_val);
     }
 
     // Float test
@@ -86,14 +89,14 @@ async fn test_cql_types() {
         .await
         .unwrap();
 
-    if let Some(rows) = session
+    let rows = session
         .query("SELECT floatval FROM ks.floatingpoint", &[])
         .await
         .unwrap()
-    {
-        for row in rows.into_typed::<(f32,)>() {
-            let bool_val: f32 = row.unwrap().0;
-            println!("float value: {}", bool_val);
-        }
+        .rows;
+
+    for row in rows.into_typed::<(f32,)>() {
+        let bool_val: f32 = row.unwrap().0;
+        println!("float value: {}", bool_val);
     }
 }

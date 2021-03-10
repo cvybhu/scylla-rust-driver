@@ -168,23 +168,18 @@ async fn query_peers(conn: &Connection, connect_port: u16) -> Result<Vec<Peer>, 
 
     let (peers_res, local_res) = tokio::try_join!(peers_query, local_query)?;
 
-    let peers_rows = peers_res.ok_or(QueryError::ProtocolError(
-        "system.peers query response was not Rows",
-    ))?;
-
-    let local_rows = local_res.ok_or(QueryError::ProtocolError(
-        "system.local query response was not Rows",
-    ))?;
-
-    let mut result: Vec<Peer> = Vec::with_capacity(peers_rows.len() + 1);
+    let mut result: Vec<Peer> = Vec::with_capacity(peers_res.rows.len() + 1);
 
     let typed_peers_rows =
-        peers_rows.into_typed::<(IpAddr, Option<String>, Option<String>, Option<Vec<String>>)>();
+        peers_res
+            .rows
+            .into_typed::<(IpAddr, Option<String>, Option<String>, Option<Vec<String>>)>();
 
     // For the local node we should use connection's address instead of rpc_address unless SNI is enabled (TODO)
     // Replace address in local_rows with connection's address
     let local_address: IpAddr = conn.get_connect_address().ip();
-    let typed_local_rows = local_rows
+    let typed_local_rows = local_res
+        .rows
         .into_typed::<(IpAddr, Option<String>, Option<String>, Option<Vec<String>>)>()
         .map(|res| res.map(|(_addr, dc, rack, tokens)| (local_address, dc, rack, tokens)));
 
@@ -222,9 +217,7 @@ async fn query_keyspaces(conn: &Connection) -> Result<HashMap<String, Keyspace>,
             &[],
         )
         .await?
-        .ok_or(QueryError::ProtocolError(
-            "system_schema.keyspaces query response was not Rows",
-        ))?;
+        .rows;
 
     let mut result = HashMap::with_capacity(rows.len());
 
