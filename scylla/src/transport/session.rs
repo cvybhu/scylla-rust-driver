@@ -15,6 +15,7 @@ use crate::prepared_statement::{PartitionKeyError, PreparedStatement};
 use crate::query::Query;
 use crate::routing::{murmur3_token, Token};
 use crate::statement::Consistency;
+use crate::tracing::{TracingEvent, TracingInfo};
 use crate::transport::{
     cluster::Cluster,
     connection::{Connection, ConnectionConfig, QueryResult, VerifiedKeyspaceName},
@@ -526,6 +527,43 @@ impl Session {
         self.cluster.use_keyspace(verified_ks_name).await?;
 
         Ok(())
+    }
+
+    pub async fn get_tracing_info(&self, tracing_id: &Uuid) -> Result<TracingInfo, QueryError> {
+        let mut traces_session_query =
+            Query::new(crate::tracing::TRACES_SESSION_QUERY_STR.to_string());
+        traces_session_query.consistency = Consistency::One;
+
+        let mut traces_events_query =
+            Query::new(crate::tracing::TRACES_EVENTS_QUERY_STR.to_string());
+        traces_events_query.consistency = Consistency::One;
+        // TODO: Set a retry policy that waits???
+
+        let (traces_session_res, traces_events_res) = tokio::try_join!(
+            self.query(traces_session_query, (tracing_id,)),
+            self.query(traces_events_query, (tracing_id,))
+        )?;
+
+        // Get session data
+        let mut tracing_info: TracingInfo = traces_session_res
+            .rows
+            .into_typed::<TracingInfo>()
+            .next()
+            .ok_or(QueryError::ProtocolError(
+                "No rows from system_traces.session",
+            ))?
+            .map_err(|_| {
+                QueryError::ProtocolError("Row from system_traces.session has a bad type")
+            })?;
+
+        for event in traces_events_res.rows.into_typed::<TracingEvent>() {
+            let tracing_event: TracingEvent = event.map_err(|_| {
+                QueryError::ProtocolError("Row from system_traces.events has a bad type")
+            })?;
+            tracing_info.events.push(tracing_event);
+        }
+
+        Ok(tracing_info)
     }
 
     pub async fn refresh_topology(&self) -> Result<(), QueryError> {

@@ -138,6 +138,7 @@ impl CQLValue {
     pub fn as_uuid(&self) -> Option<Uuid> {
         match self {
             Self::Uuid(u) => Some(*u),
+            Self::Timeuuid(u) => Some(*u),
             _ => None,
         }
     }
@@ -159,6 +160,7 @@ impl CQLValue {
     pub fn as_bigint(&self) -> Option<i64> {
         match self {
             Self::BigInt(i) => Some(*i),
+            Self::Timestamp(t) => Some(*t),
             _ => None,
         }
     }

@@ -2,6 +2,7 @@ use crate::frame::value::ValueList;
 use crate::query::Query;
 use crate::routing::hash3_x64_128;
 use crate::statement::Consistency;
+use crate::tracing::TracingInfo;
 use crate::transport::connection::QueryResult;
 use crate::transport::errors::{BadKeyspaceName, BadQuery, DBError, QueryError};
 use crate::{IntoTypedRows, Session, SessionBuilder};
@@ -621,6 +622,7 @@ async fn test_tracing() {
     test_tracing_query(&session).await;
     test_tracing_prepare(&session).await;
     test_tracing_execute(&session).await;
+    test_get_tracing_info(&session).await;
 }
 
 async fn test_tracing_query(session: &Session) {
@@ -702,4 +704,16 @@ async fn assert_in_tracing_table(session: &Session, tracing_uuid: Uuid) {
         .rows
         .first()
         .expect("No rows for tracing with this session id!");
+}
+
+async fn test_get_tracing_info(session: &Session) {
+    // A query with tracing enabled has a tracing uuid in result
+    let mut traced_query: Query = Query::new("SELECT * FROM test_tracing_ks.tab".to_string());
+    traced_query.tracing = true;
+
+    let traced_query_result: QueryResult = session.query(traced_query, &[]).await.unwrap();
+    let tracing_id: Uuid = traced_query_result.tracing_id.unwrap();
+
+    let tracing_info: TracingInfo = session.get_tracing_info(&tracing_id).await.unwrap();
+    assert!(!tracing_info.events.is_empty());
 }
