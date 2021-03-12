@@ -307,6 +307,8 @@ mod tests {
         let connection_config = ConnectionConfig {
             compression: None,
             tcp_nodelay: false,
+            auth_password: None,
+            auth_username: None,
         };
 
         // Get shard info from a single connection, all connections will open to this shard

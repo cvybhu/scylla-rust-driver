@@ -59,11 +59,11 @@ struct TaskResponse {
 pub struct ConnectionConfig {
     pub compression: Option<Compression>,
     pub tcp_nodelay: bool,
-    /*
-    These configuration options will be added in the future:
 
     pub auth_username: Option<String>,
     pub auth_password: Option<String>,
+    /*
+    These configuration options will be added in the future:
 
     pub use_tls: bool,
     pub tls_certificate_path: Option<String>,
@@ -82,6 +82,8 @@ impl Default for ConnectionConfig {
         Self {
             compression: None,
             tcp_nodelay: false,
+            auth_username: None,
+            auth_password: None,
         }
     }
 }
@@ -131,6 +133,15 @@ impl Connection {
 
     pub async fn get_options(&self) -> Result<Response, QueryError> {
         self.send_request(&request::Options {}, false).await
+    }
+
+    pub async fn authenticate_response(
+        &self,
+        username: Option<String>,
+        password: Option<String>,
+    ) -> Result<Response, QueryError> {
+        self.send_request(&request::AuthResponse { username, password }, false)
+            .await
     }
 
     pub async fn prepare(&self, query: &str) -> Result<PreparedStatement, QueryError> {
@@ -602,7 +613,28 @@ pub async fn open_named_connection(
     let result = connection.startup(options).await?;
     match result {
         Response::Ready => {}
-        Response::Authenticate => unimplemented!("Authentication is not yet implemented"),
+        Response::Authenticate(authenticate) => {
+            let _authenticator = authenticate.authenticator_name;
+
+            let username = connection.config.auth_username.to_owned();
+            let password = connection.config.auth_password.to_owned();
+
+            let auth_result = connection.authenticate_response(username, password).await?;
+            match auth_result {
+                Response::AuthChallenge(authenticate_challenge) => {
+                    let challenge_message = authenticate_challenge.authenticate_message;
+                    unimplemented!("Auth Challenge not implemented yet, {}", challenge_message)
+                }
+                Response::AuthSuccess(_authenticate_success) => {
+                    return Ok((connection, error_receiver));
+                }
+                _ => {
+                    return Err(QueryError::ProtocolError(
+                        "Unexpected response to Authenticate Response message",
+                    ))
+                }
+            }
+        }
         _ => {
             return Err(QueryError::ProtocolError(
                 "Unexpected response to STARTUP message",
