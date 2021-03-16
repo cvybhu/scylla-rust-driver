@@ -28,6 +28,11 @@ use crate::frame::{
 use crate::query::Query;
 use crate::routing::ShardInfo;
 use crate::statement::prepared_statement::PreparedStatement;
+use crate::transport::Authenticator;
+use crate::transport::Authenticator::{
+    AllowAllAuthenticator, CassandraAllowAllAuthenticator, CassandraPasswordAuthenticator,
+    PasswordAuthenticator, ScyllaTransitionalAuthenticator,
+};
 use crate::transport::Compression;
 
 pub struct Connection {
@@ -139,9 +144,17 @@ impl Connection {
         &self,
         username: Option<String>,
         password: Option<String>,
+        authenticator: Authenticator,
     ) -> Result<Response, QueryError> {
-        self.send_request(&request::AuthResponse { username, password }, false)
-            .await
+        self.send_request(
+            &request::AuthResponse {
+                username,
+                password,
+                authenticator,
+            },
+            false,
+        )
+        .await
     }
 
     pub async fn prepare(&self, query: &str) -> Result<PreparedStatement, QueryError> {
@@ -614,12 +627,24 @@ pub async fn open_named_connection(
     match result {
         Response::Ready => {}
         Response::Authenticate(authenticate) => {
-            let _authenticator = authenticate.authenticator_name;
+            let authenticator: Authenticator = match &authenticate.authenticator_name as &str {
+                "AllowAllAuthenticator" => AllowAllAuthenticator,
+                "PasswordAuthenticator" => PasswordAuthenticator,
+                "org.apache.cassandra.auth.PasswordAuthenticator" => CassandraPasswordAuthenticator,
+                "org.apache.cassandra.auth.AllowAllAuthenticator" => CassandraAllowAllAuthenticator,
+                "com.scylladb.auth.TransitionalAuthenticator" => ScyllaTransitionalAuthenticator,
+                _ => unimplemented!(
+                    "Authenticator not supported, {}",
+                    authenticate.authenticator_name
+                ),
+            };
 
             let username = connection.config.auth_username.to_owned();
             let password = connection.config.auth_password.to_owned();
 
-            let auth_result = connection.authenticate_response(username, password).await?;
+            let auth_result = connection
+                .authenticate_response(username, password, authenticator)
+                .await?;
             match auth_result {
                 Response::AuthChallenge(authenticate_challenge) => {
                     let challenge_message = authenticate_challenge.authenticate_message;
