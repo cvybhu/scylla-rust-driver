@@ -1,0 +1,104 @@
+name: Authenticate
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # PasswordAuthenticator
+  build:
+    runs-on: ubuntu-latest
+    services:
+      scylladb:
+        image: scylladb/scylla
+        ports:
+          - 9042:9042
+        options: --health-cmd "cqlsh --debug" --health-interval 5s --health-retries 10
+        volumes:
+          - ${{ github.workspace }}:/workspace
+        command: --authenticator PasswordAuthenticator
+    steps:
+    - uses: actions/checkout@v2
+    - name: Run tests
+      # test threads must be one because else database tests will run in parallel and will result in flaky tests
+      run: cargo test --verbose --  --ignored --test-threads=1
+    - name: Format check
+      run: cargo fmt --verbose --all -- --check
+    - name: Clippy check
+      run: cargo clippy --verbose --examples --tests -- -D warnings
+    - name: Build
+      run: cargo build --verbose --examples
+  # # org.apache.cassandra.auth.PasswordAuthenticator
+  # build:
+  #   runs-on: ubuntu-latest
+  #   services:
+  #     scylladb:
+  #       image: scylladb/scylla
+  #       ports:
+  #         - 9042:9042
+  #       options: --health-cmd "cqlsh --debug" --health-interval 5s --health-retries 10 --authenticator org.apache.cassandra.auth.PasswordAuthenticator
+  #       volumes:
+  #         - ${{ github.workspace }}:/workspace
+  #       # authenticator: org.apache.cassandra.auth.PasswordAuthenticator
+  #   steps:
+  #   - uses: actions/checkout@v2
+  #   - name: Run tests
+  #     # test threads must be one because else database tests will run in parallel and will result in flaky tests
+  #     run: cargo test --verbose --  --ignored --test-threads=1
+  #   - name: Format check
+  #     run: cargo fmt --verbose --all -- --check
+  #   - name: Clippy check
+  #     run: cargo clippy --verbose --examples --tests -- -D warnings
+  #   - name: Build
+  #     run: cargo build --verbose --examples
+  # # AllowAllAuthenticator
+  # build:
+  #   runs-on: ubuntu-latest
+  #   services:
+  #     scylladb:
+  #       image: scylladb/scylla
+  #       ports:
+  #         - 9042:9042
+  #       options: --health-cmd "cqlsh --debug" --health-interval 5s --health-retries 10 --authenticator AllowAllAuthenticator
+  #       volumes:
+  #         - ${{ github.workspace }}:/workspace
+  #       # authenticator: AllowAllAuthenticator
+  #   steps:
+  #   - uses: actions/checkout@v2
+  #   - name: Run tests
+  #     # test threads must be one because else database tests will run in parallel and will result in flaky tests
+  #     run: cargo test --verbose --  --ignored --test-threads=1
+  #   - name: Format check
+  #     run: cargo fmt --verbose --all -- --check
+  #   - name: Clippy check
+  #     run: cargo clippy --verbose --examples --tests -- -D warnings
+  #   - name: Build
+  #     run: cargo build --verbose --examples
+  # # org.apache.cassandra.auth.AllowAllAuthenticator
+  # build:
+  #   runs-on: ubuntu-latest
+  #   services:
+  #     scylladb:
+  #       image: scylladb/scylla
+  #       ports:
+  #         - 9042:9042
+  #       options: --health-cmd "cqlsh --debug" --health-interval 5s --health-retries 10 --authenticator org.apache.cassandra.auth.AllowAllAuthenticator
+  #       volumes:
+  #         - ${{ github.workspace }}:/workspace
+  #       # authenticator: org.apache.cassandra.auth.AllowAllAuthenticator
+  #   steps:
+  #   - uses: actions/checkout@v2
+  #   - name: Run tests
+  #     # test threads must be one because else database tests will run in parallel and will result in flaky tests
+  #     run: cargo test --verbose --  --ignored --test-threads=1
+  #   - name: Format check
+  #     run: cargo fmt --verbose --all -- --check
+  #   - name: Clippy check
+  #     run: cargo clippy --verbose --examples --tests -- -D warnings
+  #   - name: Build
+  #     run: cargo build --verbose --examples
