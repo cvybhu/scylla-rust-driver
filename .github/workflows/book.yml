@@ -3,7 +3,7 @@ name: Book
 
 on:
   push:
-    branches: [ main ]
+    #branches: [ main ]
   pull_request:
     branches: [ main ]
 
@@ -12,22 +12,23 @@ env:
 
 jobs:
   build:
+    container: cvybhu/rust-mdbook
     runs-on: ubuntu-latest
     services:
       scylladb:
         image: scylladb/scylla
         ports:
           - 9042:9042
-        options: --health-cmd "cqlsh --debug" --health-interval 5s --health-retries 10
+        options: --health-cmd "cqlsh --debug" --health-interval 5s --health-retries 20
         volumes:
           - ${{ github.workspace }}:/workspace
     steps:
     - uses: actions/checkout@v2
     - name: Build the project
       run: cargo build --verbose
-    - name: Install mdbook
-      run: cargo install mdbook
+    # - name: Install mdbook
+      #run: cargo install mdbook
     - name: Build the book
       run: mdbook build book
     - name: Run book tests
-      run: mdbook test -L target/debug/deps book
+      run: SCYLLA_URI=scylladb:9042 mdbook test -L target/debug/deps book
