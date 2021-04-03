@@ -2,7 +2,7 @@ name: Authenticate
 
 on:
   push:
-    branches: [ main ]
+    #branches: [ main ]
   pull_request:
     branches: [ main ]
 
@@ -21,7 +21,8 @@ jobs:
         options: --health-cmd "cqlsh --debug" --health-interval 5s --health-retries 10
         volumes:
           - ${{ github.workspace }}:/workspace
-        command: --authenticator PasswordAuthenticator
+        with:
+          args: --authenticator PasswordAuthenticator
     steps:
     - uses: actions/checkout@v2
     - name: Run tests
