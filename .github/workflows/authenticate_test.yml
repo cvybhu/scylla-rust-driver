@@ -25,7 +25,7 @@ jobs:
     - uses: actions/checkout@v2
     - name: Run tests
       # test threads must be one because else database tests will run in parallel and will result in flaky tests
-      run: cargo test --verbose --  --ignored --test-threads=1
+      run: cargo test --verbose
     - name: Format check
       run: cargo fmt --verbose --all -- --check
     - name: Clippy check
