@@ -18,7 +18,7 @@ jobs:
         image: scylladb/scylla
         ports:
           - 9042:9042
-        options: --health-cmd "cqlsh --debug" --health-interval 5s --health-retries 10 -v /runner/work/scylla-rust-driver/scylla-rust-driver/test/auth/scylla.yaml:/etc/scylla/scylla.yaml:ro
+        options: --health-cmd "cqlsh --debug" --health-interval 5s --health-retries 10 -v /runner/work/scylla-rust-driver/scylla-rust-driver/dfjdshdkjshfdsjfltest/auth/scylla.yaml:/etc/scylla/scylla.yaml:ro
         volumes:
           - ${{ github.workspace }}:/workspace
     steps:
