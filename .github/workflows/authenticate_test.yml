@@ -18,10 +18,9 @@ jobs:
         image: scylladb/scylla
         ports:
           - 9042:9042
-        options: --health-cmd "cqlsh --debug" --health-interval 5s --health-retries 10
+        options: --health-cmd "cqlsh --debug" --health-interval 5s --health-retries 10 -v ${{ github.workspace }}/test/auth/scylla.yaml:/etc/scylla/scylla.yaml
         volumes:
           - ${{ github.workspace }}:/workspace
-          - ${{ github.workspace }}/../test/auth/scylla.yaml:/etc/scylla/scylla.yaml
     steps:
     - uses: actions/checkout@v2
     - name: Run tests
