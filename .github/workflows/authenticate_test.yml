@@ -21,7 +21,7 @@ jobs:
         options: --health-cmd "cqlsh --debug" --health-interval 5s --health-retries 10
         volumes:
           - ${{ github.workspace }}:/workspace
-          - ${{ github.workspace }}/test/auth/scylla.yaml:/etc/scylla/scylla.yaml
+          - ${{ github.workspace }}/../test/auth/scylla.yaml:/etc/scylla/scylla.yaml
     steps:
     - uses: actions/checkout@v2
     - name: Run tests
