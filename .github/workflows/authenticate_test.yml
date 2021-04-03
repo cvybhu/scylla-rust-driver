@@ -15,14 +15,12 @@ jobs:
     runs-on: ubuntu-latest
     services:
       scylladb:
-        image: scylladb/scylla
+        image: scylladb/scylla --authenticator PasswordAuthenticator
         ports:
           - 9042:9042
         options: --health-cmd "cqlsh --debug" --health-interval 5s --health-retries 10
         volumes:
           - ${{ github.workspace }}:/workspace
-        with:
-          args: --authenticator PasswordAuthenticator
     steps:
     - uses: actions/checkout@v2
     - name: Run tests
