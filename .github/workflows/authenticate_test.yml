@@ -22,6 +22,8 @@ jobs:
         volumes:
           - ${{ github.workspace }}:/workspace
     steps:
+    - name: Is there a repo
+      run: ls . /runner/work/scylla-rust-driver
     - uses: actions/checkout@v2
     - name: Run tests
       # test threads must be one because else database tests will run in parallel and will result in flaky tests
