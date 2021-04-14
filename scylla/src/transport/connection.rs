@@ -27,6 +27,7 @@ use std::{
 use super::errors::{BadKeyspaceName, BadQuery, DbError, QueryError};
 
 use crate::batch::{Batch, BatchStatement};
+use crate::cql_to_rust::{FromRow, FromRowError};
 use crate::frame::{
     self,
     request::{self, batch, execute, query, Request, RequestOpcode},
@@ -37,6 +38,7 @@ use crate::frame::{
 use crate::query::Query;
 use crate::routing::ShardInfo;
 use crate::statement::prepared_statement::PreparedStatement;
+use crate::transport::session::IntoTypedRows;
 use crate::transport::Authenticator;
 use crate::transport::Authenticator::{
     AllowAllAuthenticator, CassandraAllowAllAuthenticator, CassandraPasswordAuthenticator,
@@ -80,11 +82,64 @@ pub struct QueryResponse {
 #[derive(Default, Debug)]
 pub struct QueryResult {
     /// Rows returned by the database
-    pub rows: Option<Vec<result::Row>>,
+    pub rows: Vec<result::Row>,
     /// Warnings returned by the database
     pub warnings: Vec<String>,
     /// CQL Tracing uuid - can only be Some if tracing is enabled for this query
     pub tracing_id: Option<Uuid>,
+
+    /// Whether the response contained rows (maybe empty) or not
+    pub response_had_rows: bool,
+}
+
+impl QueryResult {
+    /// Returns first row in the result
+    pub fn first_row(self) -> Option<result::Row> {
+        self.rows.into_iter().next()
+    }
+
+    /// Returns first row in the result parsed as the given type  
+    /// When rows are empty returns `None`  
+    /// When the row can't be parsed as the given type returns the parsing error
+    ///
+    /// # Example
+    /// ```rust
+    /// # use scylla::Session;
+    /// # async fn check_only_compiles(session: &Session) -> Result<(), Box<dyn std::error::Error>> {
+    /// // first_row_typed gets first row and parses it as the given type
+    /// let first_int_val: Option<Result<(i32,), _>> = session
+    ///     .query("SELECT a from ks.tab", &[])
+    ///     .await?
+    ///     .first_row_typed::<(i32,)>();
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn first_row_typed<RowT: FromRow>(self) -> Option<Result<RowT, FromRowError>> {
+        self.rows_typed::<RowT>().next()
+    }
+
+    /// Returns iterator over rows parsed as the given type  
+    /// Shorthand for `.rows.into_typed::<>()`
+    ///
+    /// # Example
+    /// ```rust
+    /// # use scylla::Session;
+    /// # async fn check_only_compiles(session: &Session) -> Result<(), Box<dyn std::error::Error>> {
+    /// // Parse row as a single column containing an int value
+    /// let rows = session
+    ///     .query("SELECT a from ks.tab", &[])
+    ///     .await?
+    ///     .rows_typed::<(i32,)>(); // Same as .rows.into_typed()
+    ///
+    /// for row in rows {
+    ///     let (int_value,): (i32,) = row?;
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn rows_typed<RowT: FromRow>(self) -> impl Iterator<Item = Result<RowT, FromRowError>> {
+        self.rows.into_typed::<RowT>()
+    }
 }
 
 /// Result of Session::batch(). Contains no rows, only some useful information.
@@ -108,10 +163,13 @@ impl QueryResponse {
             }
         };
 
+        let response_had_rows: bool = rows.is_some();
+
         Ok(QueryResult {
-            rows,
+            rows: rows.unwrap_or_else(Vec::new),
             warnings: self.warnings,
             tracing_id: self.tracing_id,
+            response_had_rows,
         })
     }
 }

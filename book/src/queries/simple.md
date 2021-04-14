@@ -66,7 +66,7 @@ Here the first `?` will be filled with `2` and the second with `"Some text"`.
 See [Query values](values.md) for more information about sending values in queries
 
 ### Query result
-`Session::query` returns `QueryResult` with rows represented as `Option<Vec<Row>>`.  
+`Session::query` returns `QueryResult` with rows represented as `Vec<Row>`.  
 Each row can be parsed as a tuple of rust types using `into_typed`:
 ```rust
 # extern crate scylla;
@@ -76,13 +76,14 @@ Each row can be parsed as a tuple of rust types using `into_typed`:
 use scylla::IntoTypedRows;
 
 // Query rows from the table and print them
-if let Some(rows) = session.query("SELECT a FROM ks.tab", &[]).await?.rows {
-    // Parse each row as a tuple containing single i32
-    for row in rows.into_typed::<(i32,)>() {
-        let read_row: (i32,) = row?;
-        println!("Read a value from row: {}", read_row.0);
-    }
+// Parse each row as a tuple containing single i32
+let rows = session.query("SELECT a FROM ks.tab", &[]).await?.rows;
+    
+for row in rows.into_typed::<(i32,)>() {
+    let read_row: (i32,) = row?;
+    println!("Read a value from row: {}", read_row.0);
 }
+
 # Ok(())
 # }
 ```
