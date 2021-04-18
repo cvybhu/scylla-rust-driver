@@ -1,9 +1,22 @@
 use crate::frame::frame_errors::{FrameError, ParseError};
+use crate::frame::response::cql_to_rust::FromRowError;
 use crate::frame::value::SerializeValuesError;
 use crate::statement::Consistency;
 use std::io::ErrorKind;
 use std::sync::Arc;
 use thiserror::Error;
+
+/// Error that occured while checking agreement of schema versions
+#[derive(Error, Debug, Clone)]
+pub enum SchemaAgreementError {
+    /// Query to fetch schema version failed
+    #[error(transparent)]
+    QueryError(#[from] QueryError),
+
+    /// Parsing values in row as uuid failed
+    #[error(transparent)]
+    FromRowError(#[from] FromRowError),
+}
 
 /// Error that occured during query execution
 #[derive(Error, Debug, Clone)]

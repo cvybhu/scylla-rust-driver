@@ -2,11 +2,12 @@ use futures::future::join_all;
 use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::net::lookup_host;
 use tracing::warn;
 use uuid::Uuid;
 
-use super::errors::{BadQuery, NewSessionError, QueryError};
+use super::errors::{BadQuery, NewSessionError, QueryError, SchemaAgreementError};
 use crate::batch::Batch;
 use crate::cql_to_rust::FromRow;
 use crate::frame::response::cql_to_rust::FromRowError;
@@ -35,6 +36,7 @@ pub struct Session {
     cluster: Cluster,
     load_balancer: Arc<dyn LoadBalancingPolicy>,
     retry_policy: Box<dyn RetryPolicy + Send + Sync>,
+    schema_agreement_interval: Duration,
 
     metrics: Arc<Metrics>,
 }
@@ -67,6 +69,8 @@ pub struct SessionConfig {
 
     pub auth_username: Option<String>,
     pub auth_password: Option<String>,
+
+    pub schema_agreement_interval: Duration,
     /*
     These configuration options will be added in the future:
 
@@ -100,6 +104,7 @@ impl SessionConfig {
             known_nodes: Vec::new(),
             compression: None,
             tcp_nodelay: false,
+            schema_agreement_interval: Duration::from_millis(10),
             load_balancing: Arc::new(TokenAwarePolicy::new(Box::new(RoundRobinPolicy::new()))),
             used_keyspace: None,
             keyspace_case_sensitive: false,
@@ -219,6 +224,10 @@ impl<RowT: FromRow> Iterator for TypedRowIter<RowT> {
     }
 }
 
+// Queries for schema agreement
+const LOCAL_VERSION: &str = "SELECT schema_version FROM system.local WHERE key='local'";
+const PEERS_VERSION: &str = "SELECT schema_version FROM system.peers";
+
 /// Represents a CQL session, which can be used to communicate
 /// with the database
 impl Session {
@@ -258,6 +267,7 @@ impl Session {
             cluster,
             load_balancer: config.load_balancing,
             retry_policy: config.retry_policy,
+            schema_agreement_interval: config.schema_agreement_interval,
             metrics,
         };
 
@@ -731,6 +741,55 @@ impl Session {
         }
 
         return Err(last_error);
+    }
+
+    pub async fn await_schema_agreement(&self) -> Result<(), SchemaAgreementError> {
+        while !self.check_schema_agreement().await? {
+            tokio::time::sleep(self.schema_agreement_interval).await
+        }
+        Ok(())
+    }
+
+    pub async fn await_timed_schema_agreement(
+        &self,
+        timeout: u64,
+    ) -> Result<bool, SchemaAgreementError> {
+        let agreement_start = std::time::Instant::now();
+
+        while !self.check_schema_agreement().await? {
+            let elapsed = agreement_start.elapsed().as_millis() as u64;
+            if elapsed > timeout {
+                return Ok(false);
+            }
+            tokio::time::sleep(self.schema_agreement_interval).await
+        }
+        Ok(true)
+    }
+
+    async fn check_schema_agreement(&self) -> Result<bool, SchemaAgreementError> {
+        let peers_rows = self.query(PEERS_VERSION, &[]);
+        let local_version = self.fetch_schema_version().await?;
+        if let Some(rows) = peers_rows.await?.rows {
+            for row in rows.into_typed::<(Uuid,)>() {
+                let (version,) = row?;
+                if local_version != version {
+                    return Ok(false);
+                }
+            }
+        }
+        Ok(true)
+    }
+
+    pub async fn fetch_schema_version(&self) -> Result<Uuid, SchemaAgreementError> {
+        if let Some(rows) = self.query(LOCAL_VERSION, &[]).await?.rows {
+            #[allow(clippy::never_loop)]
+            for row in rows.into_typed::<(Uuid,)>() {
+                let (version,) = row?;
+                return Ok(version); // we're expecting only one row
+            }
+        }
+        let err = QueryError::ProtocolError("Error while trying to fetch schema version.");
+        Err(SchemaAgreementError::QueryError(err))
     }
 }
 
