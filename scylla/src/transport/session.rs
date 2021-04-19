@@ -781,15 +781,17 @@ impl Session {
     }
 
     pub async fn fetch_schema_version(&self) -> Result<Uuid, QueryError> {
-        if let Some(rows) = self.query(LOCAL_VERSION, &[]).await?.rows {
-            #[allow(clippy::never_loop)]
-            for row in rows.into_typed::<(Uuid,)>() {
-                let (version,) = row.map_err(|_| QueryError::ProtocolError("DB u stupid"))?;
-                return Ok(version); // we're expecting only one row
-            }
-        }
-        let err = QueryError::ProtocolError("Error while trying to fetch schema version.");
-        Err(err)
+        let (version_id,): (Uuid,) = self
+            .query(LOCAL_VERSION, &[])
+            .await?
+            .rows
+            .ok_or(QueryError::ProtocolError("Version query returned not rows"))?
+            .into_typed::<(Uuid,)>()
+            .next()
+            .ok_or(QueryError::ProtocolError("Oh no rows empty"))?
+            .map_err(|_| QueryError::ProtocolError("DB u stupid its an Uuid"))?;
+
+        Ok(version_id)
     }
 }
 
