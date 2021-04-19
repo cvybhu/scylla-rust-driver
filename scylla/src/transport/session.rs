@@ -780,16 +780,16 @@ impl Session {
         Ok(true)
     }
 
-    pub async fn fetch_schema_version(&self) -> Result<Uuid, SchemaAgreementError> {
+    pub async fn fetch_schema_version(&self) -> Result<Uuid, QueryError> {
         if let Some(rows) = self.query(LOCAL_VERSION, &[]).await?.rows {
             #[allow(clippy::never_loop)]
             for row in rows.into_typed::<(Uuid,)>() {
-                let (version,) = row?;
+                let (version,) = row.map_err(|_| QueryError::ProtocolError("DB u stupid"))?;
                 return Ok(version); // we're expecting only one row
             }
         }
         let err = QueryError::ProtocolError("Error while trying to fetch schema version.");
-        Err(SchemaAgreementError::QueryError(err))
+        Err(err)
     }
 }
 
