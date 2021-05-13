@@ -305,7 +305,7 @@ async fn test_date() {
             .query("SELECT val from ks.date_tests", &[])
             .await
             .unwrap()
-            .rows[0]
+            .rows()[0]
             .columns[0]
             .as_ref()
             .map(|cql_val| match cql_val {

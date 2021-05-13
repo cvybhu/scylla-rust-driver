@@ -82,20 +82,30 @@ pub struct QueryResponse {
 #[derive(Default, Debug)]
 pub struct QueryResult {
     /// Rows returned by the database
-    pub rows: Vec<result::Row>,
+    pub rows: Option<Vec<result::Row>>,
     /// Warnings returned by the database
     pub warnings: Vec<String>,
     /// CQL Tracing uuid - can only be Some if tracing is enabled for this query
     pub tracing_id: Option<Uuid>,
-
-    /// Whether the response contained rows (maybe empty) or not
-    pub response_had_rows: bool,
 }
 
 impl QueryResult {
+    /// Returns the received rows
+    pub fn rows(self) -> Vec<result::Row> {
+        self.rows.unwrap_or_else(Vec::new)
+    }
+
+    /// Returns length of the received rows
+    pub fn rows_len(&self) -> usize {
+        match &self.rows {
+            Some(rows) => rows.len(),
+            None => 0,
+        }
+    }
+
     /// Returns first row in the result
     pub fn first_row(self) -> Option<result::Row> {
-        self.rows.into_iter().next()
+        self.rows().into_iter().next()
     }
 
     /// Returns first row in the result parsed as the given type  
@@ -138,7 +148,7 @@ impl QueryResult {
     /// # }
     /// ```
     pub fn rows_typed<RowT: FromRow>(self) -> impl Iterator<Item = Result<RowT, FromRowError>> {
-        self.rows.into_typed::<RowT>()
+        self.rows().into_typed::<RowT>()
     }
 }
 
@@ -163,13 +173,10 @@ impl QueryResponse {
             }
         };
 
-        let response_had_rows: bool = rows.is_some();
-
         Ok(QueryResult {
-            rows: rows.unwrap_or_else(Vec::new),
+            rows,
             warnings: self.warnings,
             tracing_id: self.tracing_id,
-            response_had_rows,
         })
     }
 }

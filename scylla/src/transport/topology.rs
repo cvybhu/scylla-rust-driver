@@ -167,7 +167,7 @@ async fn query_peers(conn: &Connection, connect_port: u16) -> Result<Vec<Peer>, 
 
     let (peers_res, local_res) = tokio::try_join!(peers_query, local_query)?;
 
-    let mut result: Vec<Peer> = Vec::with_capacity(peers_res.rows.len() + 1);
+    let mut result: Vec<Peer> = Vec::with_capacity(peers_res.rows_len() + 1);
 
     let typed_peers_rows =
         peers_res.rows_typed::<(IpAddr, Option<String>, Option<String>, Option<Vec<String>>)>();
@@ -214,7 +214,7 @@ async fn query_keyspaces(conn: &Connection) -> Result<HashMap<String, Keyspace>,
         )
         .await?;
 
-    let mut result = HashMap::with_capacity(query_res.rows.len());
+    let mut result = HashMap::with_capacity(query_res.rows_len());
 
     for row in query_res.rows_typed::<(String, String)>() {
         let (keyspace_name, keyspace_json_text) = row.map_err(|_| {

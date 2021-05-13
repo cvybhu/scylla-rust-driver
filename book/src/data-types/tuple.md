@@ -15,7 +15,7 @@ session
     .await?;
 
 // Read a tuple of int and string from the table
-let rows = session.query("SELECT a FROM keyspace.table", &[]).await?.rows;
+let rows = session.query("SELECT a FROM keyspace.table", &[]).await?.rows();
 
 for row in rows.into_typed::<((i32, String),)>() {
     let (tuple_value,): ((i32, String),) = row?;

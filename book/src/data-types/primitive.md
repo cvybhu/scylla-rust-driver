@@ -17,7 +17,7 @@ session
     .await?;
 
 // Read a bool from the table
-let rows = session.query("SELECT a FROM keyspace.table", &[]).await?.rows;
+let rows = session.query("SELECT a FROM keyspace.table", &[]).await?.rows();
 
 for row in rows.into_typed::<(bool,)>() {
     let (bool_value,): (bool,) = row?;
@@ -43,7 +43,7 @@ session
     .await?;
 
 // Read a tinyint from the table
-let rows = session.query("SELECT a FROM keyspace.table", &[]).await?.rows;
+let rows = session.query("SELECT a FROM keyspace.table", &[]).await?.rows();
 
 for row in rows.into_typed::<(i8,)>() {
     let (tinyint_value,): (i8,) = row?;
@@ -69,7 +69,7 @@ session
     .await?;
 
 // Read a smallint from the table
-let rows = session.query("SELECT a FROM keyspace.table", &[]).await?.rows;
+let rows = session.query("SELECT a FROM keyspace.table", &[]).await?.rows();
 
 for row in rows.into_typed::<(i16,)>() {
     let (smallint_value,): (i16,) = row?;
@@ -95,7 +95,7 @@ session
     .await?;
 
 // Read an int from the table
-let rows = session.query("SELECT a FROM keyspace.table", &[]).await?.rows;
+let rows = session.query("SELECT a FROM keyspace.table", &[]).await?.rows();
 
 for row in rows.into_typed::<(i32,)>() {
     let (int_value,): (i32,) = row?;
@@ -121,7 +121,7 @@ session
     .await?;
 
 // Read a bigint from the table
-let rows = session.query("SELECT a FROM keyspace.table", &[]).await?.rows;
+let rows = session.query("SELECT a FROM keyspace.table", &[]).await?.rows();
 
 for row in rows.into_typed::<(i64,)>() {
     let (bigint_value,): (i64,) = row?;
@@ -147,7 +147,7 @@ session
     .await?;
 
 // Read a float from the table
-let rows = session.query("SELECT a FROM keyspace.table", &[]).await?.rows;
+let rows = session.query("SELECT a FROM keyspace.table", &[]).await?.rows();
 
 for row in rows.into_typed::<(f32,)>() {
     let (float_value,): (f32,) = row?;
@@ -173,7 +173,7 @@ session
     .await?;
 
 // Read a double from the table
-let rows = session.query("SELECT a FROM keyspace.table", &[]).await?.rows;
+let rows = session.query("SELECT a FROM keyspace.table", &[]).await?.rows();
 
 for row in rows.into_typed::<(f64,)>() {
     let (double_value,): (f64,) = row?;

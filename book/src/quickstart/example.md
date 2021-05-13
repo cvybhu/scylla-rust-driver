@@ -44,7 +44,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Query rows from the table and print them
     // Parse each row as a tuple containing single i32
-    let rows = session.query("SELECT a FROM ks.extab", &[]).await?.rows;
+    let rows = session.query("SELECT a FROM ks.extab", &[]).await?.rows();
 
     for row in rows.into_typed::<(i32,)>() {
         let read_row: (i32,) = row?;

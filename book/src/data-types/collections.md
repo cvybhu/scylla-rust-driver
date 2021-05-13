@@ -17,7 +17,7 @@ session
     .await?;
 
 // Read a list of ints from the table
-let rows = session.query("SELECT a FROM keyspace.table", &[]).await?.rows;
+let rows = session.query("SELECT a FROM keyspace.table", &[]).await?.rows();
 
 for row in rows.into_typed::<(Vec<i32>,)>() {
     let (list_value,): (Vec<i32>,) = row?;
@@ -44,7 +44,7 @@ session
     .await?;
 
 // Read a set of ints from the table
-let rows = session.query("SELECT a FROM keyspace.table", &[]).await?.rows;
+let rows = session.query("SELECT a FROM keyspace.table", &[]).await?.rows();
 
 for row in rows.into_typed::<(Vec<i32>,)>() {
     let (set_value,): (Vec<i32>,) = row?;
@@ -73,7 +73,7 @@ session
     .await?;
 
 // Read a map from the table
-let rows = session.query("SELECT a FROM keyspace.table", &[]).await?.rows;
+let rows = session.query("SELECT a FROM keyspace.table", &[]).await?.rows();
 
 for row in rows.into_typed::<(HashMap<String, i32>,)>() {
     let (map_value,): (HashMap<String, i32>,) = row?;

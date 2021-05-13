@@ -11,7 +11,7 @@ use scylla::IntoTypedRows;
 use scylla::frame::value::Counter;
 
 // Read counter from the table
-let rows = session.query("SELECT c FROM keyspace.table", &[]).await?.rows;
+let rows = session.query("SELECT c FROM keyspace.table", &[]).await?.rows();
 
 for row in rows.into_typed::<(Counter,)>() {
     let (counter_value,): (Counter,) = row?;

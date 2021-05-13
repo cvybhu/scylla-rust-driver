@@ -47,7 +47,10 @@ async fn main() -> Result<()> {
         .await?;
 
     // And read like any normal value
-    let rows = session.query("SELECT my FROM ks.udt_tab", &[]).await?.rows;
+    let rows = session
+        .query("SELECT my FROM ks.udt_tab", &[])
+        .await?
+        .rows();
 
     for row in rows.into_typed::<(MyType,)>() {
         let (my_val,) = row?;

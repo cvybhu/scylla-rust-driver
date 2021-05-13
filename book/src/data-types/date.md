@@ -23,7 +23,7 @@ session
     .await?;
 
 // Read NaiveDate from the table
-let rows = session.query("SELECT a FROM keyspace.table", &[]).await?.rows;
+let rows = session.query("SELECT a FROM keyspace.table", &[]).await?.rows();
 
 for row in rows.into_typed::<(NaiveDate,)>() {
     let (date_value,): (NaiveDate,) = row?;
@@ -50,7 +50,7 @@ session
     .await?;
 
 // Read raw Date from the table
-let rows = session.query("SELECT a FROM keyspace.table", &[]).await?.rows;
+let rows = session.query("SELECT a FROM keyspace.table", &[]).await?.rows();
 
 for row in rows {
     let date_value: u32 = match row.columns[0] {

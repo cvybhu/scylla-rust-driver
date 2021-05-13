@@ -80,7 +80,7 @@ async fn main() -> Result<()> {
         .await?;
 
     // Rows can be parsed as tuples
-    let rows = session.query("SELECT a, b, c FROM ks.t", &[]).await?.rows;
+    let rows = session.query("SELECT a, b, c FROM ks.t", &[]).await?.rows();
 
     for row in rows.into_typed::<(i32, i32, String)>() {
         let (a, b, c) = row?;
